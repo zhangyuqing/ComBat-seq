@@ -9,12 +9,13 @@
 #' @return data A probe x sample count matrix, adjusted for batch effects.
 #' 
 #' @examples 
-
-#'
+#' 
+#' rm(list=ls()); load("simdata.RData"); full_mod=TRUE; normalize="none"; source("helper_seq.R")
+#' 
 #' @export
 #' 
 
-ComBat_seq <- function(counts, batch, group, full_mod=TRUE){
+ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none"){
   ########  Preparation  ########  
   library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1, otherwise run  # source("glmfit.R")
   dge_obj <- DGEList(counts=counts, group=group)
@@ -33,7 +34,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){
   batchmod <- model.matrix(~-1+batch)  # colnames: levels(batch)
   # covariate
   group <- as.factor(group)
-  if(full_mod){
+  if(full_mod & nlevels(group)>1){
     mod <- model.matrix(~group)
   }else{
     mod <- model.matrix(~1, data=as.data.frame(t(counts)))
@@ -100,7 +101,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){
   
     
   ########  Estimate parameters from NB GLM  ########
-  glm_f <- glmFit.DGEList(dge_obj, design=design, dispersion=phi_matrix) #no intercept - nonEstimable; compute offset (library sizes) within function
+  glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
     vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
@@ -108,7 +109,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){
   glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
                            offset=new_offset, prior.count=0) 
   
-  beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
+  #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
   gamma_hat <- glm_f2$coefficients[, 1:n_batch]
   mu_hat <- glm_f2$fitted.values
   phi_hat <- do.call(cbind, genewise_disp_lst)
@@ -153,6 +154,19 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){
                                                           old_mu=old_mu, old_phi=old_phi, 
                                                           new_mu=new_mu, new_phi=new_phi)
   }
+  
+  # ## normalize for library size?
+  # if(normalize!="none"){
+  #   if(!(normalize %in% c("TMM","RLE","upperquartile"))){
+  #     stop("Normalization method not supported")
+  #   }else{
+  #     adj_dge_obj <- DGEList(counts=adjust_counts, group=group, lib.size=dge_obj$samples$lib.size)
+  #     adj_dge_obj <- calcNormFactors(adj_dge_obj, method=normalize)
+  #     for(ii in 1:ncol(adjust_counts)){
+  #       adjust_counts[, ii] <- round(adjust_counts[, ii] * adj_dge_obj$samples$norm.factors[ii], 0)
+  #     }
+  #   }
+  # }
   
   return(adjust_counts)
 }
