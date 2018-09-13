@@ -1,0 +1,106 @@
+---
+title: "Application of ComBat-seq on synthesized dataset"
+output: html_notebook
+---
+
+### ComBat-seq model
+
+### Design of the study
+
+### Simulate dataset {.tabset}
+
+This example is inspired by **Figure 1** from Leek et al. 2010. We simulated a (2000 gene * 20 sample) count matrix from negative binomial distribution. The dataset contains 2 batches, with 10 samples in each batch, and no biological effect.
+
+```{r, echo=FALSE, results='hide'}
+sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), 
+       require, character.only=TRUE)
+source("ComBat_seq.R")
+source("helper_seq.R")
+set.seed(123)
+
+## Simulate count matrix and batch factor
+y1 <- matrix(rnbinom(1000*10,mu=10,size=10),ncol=10); mean(c(y1)); var(c(y1))
+y2 <- matrix(rnbinom(1000*10,mu=100,size=5),ncol=10); mean(c(y2)); var(c(y2))
+y3 <- matrix(rnbinom(1000*10,mu=100,size=10),ncol=10); mean(c(y3)); var(c(y3))
+y4 <- matrix(rnbinom(1000*10,mu=10,size=5), ncol=10); mean(c(y4)); var(c(y4))
+
+counts <- rbind(cbind(y1, y2), cbind(y3, y4))
+rownames(counts) <- paste0("gene", 1:nrow(counts))
+colnames(counts) <- paste0("sample", 1:ncol(counts))
+
+batch <- c(rep("B", ncol(y1)), rep("A", ncol(y2))); table(batch)
+group <- rep(0, ncol(y1)+ncol(y2))
+full_mod <- TRUE
+```
+
+```{r, echo=FALSE, results='hide'}
+counts_df_mlt <- data.frame(Batch=NA, melt(counts))
+counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
+```
+
+#### Distribution of counts in samples
+
+Library sizes (average counts in each sample) are roughly similar across samples. The dispersion parameters are different in two batches (Batch B: 0.1, Batch A: 0.2).
+
+```{r, echo=FALSE}
+## Boxplot of unadjusted counts in each sample
+ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+#### Batch effect in the dataset {.tabset}
+
+However, genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image below shows 10 genes from each gene group.
+
+##### Counts in genes
+
+```{r, echo=FALSE, fig.width=8, fig.height=4}
+counts_sub_1 <- counts[1:10, ]
+sub_mlt_1 <- data.frame(Batch=NA, melt(counts_sub_1))
+sub_mlt_1$Batch[sub_mlt_1$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+sub_mlt_1$Batch[sub_mlt_1$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+sub_mlt_1$Batch <- as.factor(sub_mlt_1$Batch)
+colnames(sub_mlt_1)[2:3] <- c("Genes", "Samples")
+
+p1 <- ggplot(data=sub_mlt_1, aes(x=Samples, y=value, group=Genes)) +
+  geom_line(aes(color=Genes)) +
+  geom_point(aes(shape=Genes)) +
+  #scale_color_manual(values=c(rep(1:3,3),4)) +
+  scale_shape_manual(values=rep(0:4,2)) + 
+  labs(title="10 genes from group 1",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
+counts_sub_2 <- counts[1001:1010, ]
+sub_mlt_2 <- data.frame(Batch=NA, melt(counts_sub_2))
+sub_mlt_2$Batch[sub_mlt_2$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+sub_mlt_2$Batch[sub_mlt_2$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+sub_mlt_2$Batch <- as.factor(sub_mlt_2$Batch)
+colnames(sub_mlt_2)[2:3] <- c("Genes", "Samples")
+
+p2 <- ggplot(data=sub_mlt_2, aes(x=Samples, y=value, group=Genes)) +
+  geom_line(aes(color=Genes)) +
+  geom_point(aes(shape=Genes)) +
+  #scale_color_manual(values=c(rep(1:3,3),4)) +
+  scale_shape_manual(values=rep(0:4,2)) + 
+  labs(title="10 genes from group 2",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+##### Clustering of samples
+
+```{r, echo=FALSE}
+hc <- hclust(dist(t(counts)))
+dend <- as.dendrogram(hc)
+dend <- color_branches(dend, groupLabels=batch, col=rep("black",length(batch)))
+plot(dend)  
+```
+
+
+
+
