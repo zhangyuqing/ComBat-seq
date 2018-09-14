@@ -200,7 +200,7 @@ plot(adj_dend)
 
 ## Thoughts
 
-* Library size
+* This ComBat-seq algorithm doesn't deal with library size (sequencing depth) differences that are caused by batch. 
 * Magnitude of batch effect (GLM takes log)
 * The benefit of ComBat-seq algorithm? How does it compare with simply adding batch in edgeR linear model?
 
