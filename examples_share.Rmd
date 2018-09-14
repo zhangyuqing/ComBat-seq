@@ -1,17 +1,38 @@
 ---
-title: "Application of ComBat-seq on synthesized dataset"
+title: "Application of ComBat-seq on simulated dataset"
+author: Yuqing Zhang
+date: September 14, 2018
 output: html_notebook
 ---
 
-### ComBat-seq model
+## ComBat-seq model
 
-### Design of the study
+We build a negative binomial GLM for adjusting for batch effect in count data. Gene-wise linear model:
 
-### Simulate dataset {.tabset}
+$$
+\log(\mu_{gij}) = \alpha_g + X_j^T\beta_g + \gamma_{gi} \\
+var(y_{gij}) = \mu_{gij} + \phi_{gi}\mu_{gij}^2
+$$
 
-This example is inspired by **Figure 1** from Leek et al. 2010. We simulated a (2000 gene * 20 sample) count matrix from negative binomial distribution. The dataset contains 2 batches, with 10 samples in each batch, and no biological effect.
+* $y_{gij}$: Counts of gene $g$ in sample $j$ from batch $i$.
+* $\mu_{gij}$: Expectation of counts of gene $g$ in sample $j$ from batch $i$.
+* $\alpha_g$: Background expression of gene $g$.
+* $X_j^T\beta_g$: Biological condition effect of sample $j$, design matrix and corresponding coefficients.
+* $\gamma_{gi}$: Mean batch parameter for batch $i$ on gene $g$.
+* $\phi_{gi}$: Dispersion batch parameter for batch $i$ on gene $g$.
+
+edgeR applies EB shrinkage on dispersion parameter $\phi_{gi}$, through weighted likelihood. But it doesn't apply shrinkage on $\gamma_{gi}$. 
+
+## Design of the study
+
+This example is inspired by **Figure 1** from Leek et al. 2010. We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distribution. The dataset contains **2** batches, with **10** samples in each batch, and **no biological effect**. This dataset represents a simpliest case where ComBat-seq could be useful.
+
+![](C:/Users/zhang/Dropbox/Work/ComBat_Seq/study_design_1.PNG)
+
+## Simulate dataset {.tabset}
 
 ```{r, echo=FALSE, results='hide'}
+rm(list=ls())
 sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), 
        require, character.only=TRUE)
 source("ComBat_seq.R")
@@ -40,7 +61,7 @@ counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
 counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
 ```
 
-#### Distribution of counts in samples
+### Distribution of counts in samples
 
 Library sizes (average counts in each sample) are roughly similar across samples. The dispersion parameters are different in two batches (Batch B: 0.1, Batch A: 0.2).
 
@@ -52,11 +73,13 @@ ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-#### Batch effect in the dataset {.tabset}
+### Batch effect in the dataset {.tabset}
 
-However, genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image below shows 10 genes from each gene group.
+However, genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image in the first tab below shows 10 genes from each gene group. 
 
-##### Counts in genes
+In the second tab, we show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch.
+
+#### Counts in genes
 
 ```{r, echo=FALSE, fig.width=8, fig.height=4}
 counts_sub_1 <- counts[1:10, ]
@@ -69,7 +92,6 @@ colnames(sub_mlt_1)[2:3] <- c("Genes", "Samples")
 p1 <- ggplot(data=sub_mlt_1, aes(x=Samples, y=value, group=Genes)) +
   geom_line(aes(color=Genes)) +
   geom_point(aes(shape=Genes)) +
-  #scale_color_manual(values=c(rep(1:3,3),4)) +
   scale_shape_manual(values=rep(0:4,2)) + 
   labs(title="10 genes from group 1",x="Samples", y = "Counts") +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
@@ -84,7 +106,6 @@ colnames(sub_mlt_2)[2:3] <- c("Genes", "Samples")
 p2 <- ggplot(data=sub_mlt_2, aes(x=Samples, y=value, group=Genes)) +
   geom_line(aes(color=Genes)) +
   geom_point(aes(shape=Genes)) +
-  #scale_color_manual(values=c(rep(1:3,3),4)) +
   scale_shape_manual(values=rep(0:4,2)) + 
   labs(title="10 genes from group 2",x="Samples", y = "Counts") +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
@@ -92,15 +113,94 @@ p2 <- ggplot(data=sub_mlt_2, aes(x=Samples, y=value, group=Genes)) +
 grid.arrange(p1, p2, ncol=2)
 ```
 
-##### Clustering of samples
+#### Clustering of samples before adjustment
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, fig.width=6}
 hc <- hclust(dist(t(counts)))
 dend <- as.dendrogram(hc)
-dend <- color_branches(dend, groupLabels=batch, col=rep("black",length(batch)))
+group_labels <- batch[order.dendrogram(dend)]
+dend <- color_branches(dend, groupLabels=group_labels, col=rep("black",length(batch)))
 plot(dend)  
 ```
 
 
+## Apply ComBat-seq {.tabset}
 
+### Adjustment output
+
+We apply ComBat-seq to the above simulated dataset. Some intermediate results of ComBat-seq are printed out to help us better understand how this function works.
+
+```{r}
+adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
+```
+
+### Visualize adjusted data {.tabset}
+
+Similar as above, we visualize the adjusted counts in each sample (first tab), and in 10 genes from each gene group (second tab). Also, in the third tab, we can see that after the ComBat-seq adjustment, samples are no longer clustered by batch.
+
+#### Distribution of adjusted counts in samples
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+#### Adjusted counts in genes
+
+```{r, echo=FALSE, fig.width=8, fig.height=4}
+counts_adj_1 <- adj_counts[1:10, ]
+adj_mlt_1 <- data.frame(Batch=NA, melt(counts_adj_1))
+adj_mlt_1$Batch[adj_mlt_1$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+adj_mlt_1$Batch[adj_mlt_1$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+adj_mlt_1$Batch <- as.factor(adj_mlt_1$Batch)
+colnames(adj_mlt_1)[2:3] <- c("Genes", "Samples")
+
+p3 <- ggplot(data=adj_mlt_1, aes(x=Samples, y=value, group=Genes)) +
+  geom_line(aes(color=Genes)) +
+  geom_point(aes(shape=Genes)) +
+  scale_shape_manual(values=rep(0:4,2)) + 
+  labs(title="10 genes from group 1",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
+counts_adj_2 <- adj_counts[1001:1010, ]
+adj_mlt_2 <- data.frame(Batch=NA, melt(counts_adj_2))
+adj_mlt_2$Batch[adj_mlt_2$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+adj_mlt_2$Batch[adj_mlt_2$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+adj_mlt_2$Batch <- as.factor(adj_mlt_2$Batch)
+colnames(adj_mlt_2)[2:3] <- c("Genes", "Samples")
+
+p4 <- ggplot(data=adj_mlt_2, aes(x=Samples, y=value, group=Genes)) +
+  geom_line(aes(color=Genes)) +
+  geom_point(aes(shape=Genes)) +
+  scale_shape_manual(values=rep(0:4,2)) + 
+  labs(title="10 genes from group 2",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
+grid.arrange(p3, p4, ncol=2)
+```
+
+#### Clustering of samples after adjustment
+
+```{r, echo=FALSE, fig.width=6}
+adj_hc <- hclust(dist(t(adj_counts)))
+adj_dend <- as.dendrogram(adj_hc)
+group_labels_adj <- batch[order.dendrogram(adj_dend)]
+adj_dend <- color_branches(adj_dend, groupLabels=group_labels_adj, col=rep("black",length(batch)))
+plot(adj_dend)  
+```
+
+
+## Thoughts
+
+* Library size
+* Magnitude of batch effect (GLM takes log)
+* The benefit of ComBat-seq algorithm? How does it compare with simply adding batch in edgeR linear model?
 
