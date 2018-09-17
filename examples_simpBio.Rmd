@@ -1,0 +1,37 @@
+---
+title: "Application of ComBat-seq on simulated dataset"
+subtitle: "biological & batch effects"
+author: Yuqing Zhang
+date: September 17, 2018
+output: html_notebook
+---
+
+## Design of the study
+
+We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distribution. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect **. 
+
+![](C:/Users/zhang/Dropbox/Work/ComBat_Seq/study_design_2.PNG)
+
+## Simulate dataset {.tabset}
+
+```{r, echo=FALSE, results='hide'}
+rm(list=ls())
+sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), require, character.only=TRUE)
+source("ComBat_seq.R"); source("helper_seq.R")
+set.seed(123)
+
+## Simulate count matrix and batch factor
+y1 <- matrix(rnbinom(1000*10,mu=10,size=10),ncol=10); mean(c(y1)); var(c(y1))
+y2 <- matrix(rnbinom(1000*10,mu=100,size=5),ncol=10); mean(c(y2)); var(c(y2))
+y3 <- matrix(rnbinom(1000*10,mu=100,size=10),ncol=10); mean(c(y3)); var(c(y3))
+y4 <- matrix(rnbinom(1000*10,mu=10,size=5), ncol=10); mean(c(y4)); var(c(y4))
+
+counts <- rbind(cbind(y1, y2), cbind(y3, y4))
+rownames(counts) <- paste0("gene", 1:nrow(counts))
+colnames(counts) <- paste0("sample", 1:ncol(counts))
+
+batch <- c(rep("B", ncol(y1)), rep("A", ncol(y2))); table(batch)
+group <- rep(0, ncol(y1)+ncol(y2))
+full_mod <- TRUE
+```
+

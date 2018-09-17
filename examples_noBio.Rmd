@@ -1,7 +1,8 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
+subtitle: "batch effect only, no biological effect"
 author: Yuqing Zhang
-date: September 14, 2018
+date: September 17, 2018
 output: html_notebook
 ---
 
@@ -10,7 +11,7 @@ output: html_notebook
 We build a negative binomial GLM for adjusting for batch effect in count data. Gene-wise linear model:
 
 $$
-\log(\mu_{gij}) = \alpha_g + X_j^T\beta_g + \gamma_{gi} + \log(N_j)\\
+\log(\mu_{gij}) = \alpha_g + X_j^T\beta_g + \gamma_{gi} + \log(N_j) \\
 var(y_{gij}) = \mu_{gij} + \phi_{gi}\mu_{gij}^2
 $$
 
