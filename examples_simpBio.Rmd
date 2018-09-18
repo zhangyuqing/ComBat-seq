@@ -8,9 +8,10 @@ output: html_notebook
 
 ## Design of the study
 
-We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distribution. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect **. 
+We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distribution. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect**. This is still an idealistic example, in that batch affects all genes (in the same gene group) in the same way.
 
-![](C:/Users/zhang/Dropbox/Work/ComBat_Seq/study_design_2.PNG)
+![](C:/Users/zhang/Dropbox/Work/ComBat_Seq/study_design_1.PNG)
+
 
 ## Simulate dataset {.tabset}
 
@@ -21,17 +22,32 @@ source("ComBat_seq.R"); source("helper_seq.R")
 set.seed(123)
 
 ## Simulate count matrix and batch factor
-y1 <- matrix(rnbinom(1000*10,mu=10,size=10),ncol=10); mean(c(y1)); var(c(y1))
-y2 <- matrix(rnbinom(1000*10,mu=100,size=5),ncol=10); mean(c(y2)); var(c(y2))
-y3 <- matrix(rnbinom(1000*10,mu=100,size=10),ncol=10); mean(c(y3)); var(c(y3))
-y4 <- matrix(rnbinom(1000*10,mu=10,size=5), ncol=10); mean(c(y4)); var(c(y4))
+y1_ctrl <- matrix(rnbinom(100*5,mu=10,size=10),ncol=5); mean(c(y1_ctrl)); var(c(y1_ctrl))
+y1_case <- matrix(rnbinom(100*5,mu=20,size=10),ncol=5); mean(c(y1_case)); var(c(y1_case))
+y1_null <- matrix(rnbinom(1900*10,mu=10,size=10),ncol=10)
+y2_ctrl <- matrix(rnbinom(100*3,mu=100,size=5), ncol=3); mean(c(y2_ctrl)); var(c(y2_ctrl))
+y2_case <- matrix(rnbinom(100*3,mu=200,size=5), ncol=3); mean(c(y2_case)); var(c(y2_case))
+y2_null <- matrix(rnbinom(1900*6,mu=100,size=5), ncol=6)
+y3_ctrl <- matrix(rnbinom(100*5,mu=10,size=10),ncol=5); mean(c(y1_ctrl)); var(c(y1_ctrl))
+y3_case <- matrix(rnbinom(100*5,mu=20,size=10),ncol=5); mean(c(y1_case)); var(c(y1_case))
+y3_null <- matrix(rnbinom(1900*10,mu=10,size=10),ncol=10)
+y4_ctrl <- matrix(rnbinom(100*3,mu=100,size=5), ncol=3); mean(c(y2_ctrl)); var(c(y2_ctrl))
+y4_case <- matrix(rnbinom(100*3,mu=200,size=5), ncol=3); mean(c(y2_case)); var(c(y2_case))
+y4_null <- matrix(rnbinom(1900*6,mu=100,size=5), ncol=6)
 
-counts <- rbind(cbind(y1, y2), cbind(y3, y4))
+counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
+                cbind(y1_null, y2_null),
+                cbind(y3_ctrl, y3_case, y4_ctrl, y4_case),
+                cbind(y3_null, y4_null))
 rownames(counts) <- paste0("gene", 1:nrow(counts))
 colnames(counts) <- paste0("sample", 1:ncol(counts))
 
-batch <- c(rep("B", ncol(y1)), rep("A", ncol(y2))); table(batch)
-group <- rep(0, ncol(y1)+ncol(y2))
+batch <- c(rep("B", ncol(y1_ctrl)+ncol(y1_case)), 
+           rep("A", ncol(y2_ctrl)+ncol(y2_case))); table(batch)
+group <- c(rep(0, ncol(y1_ctrl)), rep(1, ncol(y1_case)),
+           rep(0, ncol(y2_ctrl)), rep(1, ncol(y2_case)))
 full_mod <- TRUE
 ```
+
+
 
