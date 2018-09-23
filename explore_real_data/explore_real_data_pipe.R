@@ -1,6 +1,6 @@
 rm(list=ls())
-setwd("C:/Users/zhang/Google Drive/ComBat_seq/real_data_example/")
-pkg_vec <- c("DESeq2", "edgeR","dendextend", "ggplot2")
+setwd("~/Google Drive/ComBat_seq/real_data_example/")
+pkg_vec <- c("DESeq2", "edgeR","dendextend", "ggplot2", "reshape2")
 sapply(pkg_vec, require, character.only=TRUE)
 print(sapply(pkg_vec, function(pkg_name){as.character(packageVersion(pkg_name))}))
 
@@ -19,11 +19,11 @@ cond_bi <- as.numeric(as.character(rse_gene$condition_bi))
 
 ####  Visualize to see if there is batch effect
 p <- plotPCA(DESeqTransform(rse_gene), intgroup="batch")
-ggsave(file.path(study_SRP, 'PCA_batch.png'), p, width=9, height=5, units="in")
+ggsave(file.path(study_SRP, 'PCA_batch.png'), p, width=8, height=5, units="in")
 dev.off(); rm(p)
 
 p2 <- plotPCA(DESeqTransform(rse_gene), intgroup="condition_bi")
-ggsave(file.path(study_SRP, 'PCA_cond.png'), p2, width=9, height=5, units="in")
+ggsave(file.path(study_SRP, 'PCA_cond.png'), p2, width=8, height=5, units="in")
 dev.off(); rm(p2)
 
 counts_norm <- scale(t(assays(rse_gene)$counts), center=TRUE, scale=TRUE)
@@ -66,11 +66,12 @@ ggplot(lib_sizes_df, aes(x=batch, y=lib_sizes, fill=batch)) +
 dev.off()  
 
 
-####  Differential genes relative to biological condition (within batch 1)
+####  Differential genes relative to biological condition 
+####  (within batch 1 / batch specified by 'test_batch')
 counts_batch <- assays(rse_gene)$counts[, batch==test_batch]
 cond_batch <- cond_bi[batch==test_batch]
 
-y <- DGEList(counts=counts_batch, group=cond_batch)
+y <- DGEList(counts=counts_batch, group=as.factor(cond_batch))
 y <- calcNormFactors(y)
 design <- model.matrix(~as.factor(cond_batch))
 y <- estimateDisp(y, design)
@@ -106,20 +107,25 @@ print(round(range(exp(de_res$table[tail_up_genes, "logFC"])), 1))
 print(round(range(exp(de_res$table[head_down_genes, "logFC"])), 1));
 print(round(range(exp(de_res$table[tail_down_genes, "logFC"])), 1))
 
-rm()
+rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes, 
+   down_genes, head_down_genes, tail_down_genes, y, design, fit, qlf, de_res)
 
 
-## Differential genes relative to batch (within condition 0)
+####  Differential genes relative to batch 
+####  (within condition 0 / condition specified by 'test_cond')
 counts_cond <- assays(rse_gene)$counts[, cond_bi==test_cond]
 batch_cond <- batch[cond_bi==test_cond]
 
-y <- DGEList(counts=counts_batch, group=batch_cond)
+y <- DGEList(counts=counts_cond, group=as.factor(batch_cond))
 y <- calcNormFactors(y)
 design <- model.matrix(~as.factor(batch_cond))
 y <- estimateDisp(y, design)
 fit <- glmQLFit(y, design)
 qlf <- glmQLFTest(fit, coef=2)
 de_res <- topTags(qlf, n=nrow(rse_gene))
+print(range(abs(de_res$table$logFC)))  
+# NOTE: this DE is not true DE - it's testing if there is a significant mean diff between two batches (control samples)
+# Some genes will not be different in mean, while some will. Which means that batch doesn't affect all genes in the same way.
 
 up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes
 head_up_genes <- head(up_genes, n=50)  # top-50 up-regulated genes
@@ -129,15 +135,50 @@ down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated gen
 head_down_genes <- head(down_genes, n=50)  # top-50 down-regulated genes
 tail_down_genes <- tail(down_genes, n=50)  # 50 least down-regulated genes
 
+# changes in terms of mean
+print(mean(counts_cond[head_up_genes, batch_cond==1]));
+print(mean(counts_cond[head_up_genes, batch_cond==2]))
 
-## Dispersion differences across batch 1 and 2
-y_batch1 <- DGEList(counts=assays(rse_gene)$counts[, batch==1], group=cond_bi[batch==1])
+print(mean(counts_cond[tail_up_genes, batch_cond==1]));
+print(mean(counts_cond[tail_up_genes, batch_cond==2]))
+
+print(mean(counts_cond[head_down_genes, batch_cond==1]));
+print(mean(counts_cond[head_down_genes, batch_cond==2]))
+
+print(mean(counts_cond[tail_down_genes, batch_cond==1]));
+print(mean(counts_cond[tail_down_genes, batch_cond==2]))
+
+# changes in terms of fold change
+print(round(range(exp(de_res$table[head_up_genes, "logFC"])), 1));
+print(round(range(exp(de_res$table[tail_up_genes, "logFC"])), 1))
+
+print(round(range(exp(de_res$table[head_down_genes, "logFC"])), 1));
+print(round(range(exp(de_res$table[tail_down_genes, "logFC"])), 1))
+
+rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes, 
+   down_genes, head_down_genes, tail_down_genes, y, design, fit, qlf, de_res)
+
+
+####  Dispersion differences across batch 1 and 2
+y_batch1 <- DGEList(counts=assays(rse_gene)$counts[, batch==1], group=as.factor(cond_bi[batch==1]))
 y_batch1 <- calcNormFactors(y_batch1)
 design_batch1 <- model.matrix(~as.factor(cond_bi[batch==1]))
 y_batch1 <- estimateDisp(y_batch1, design_batch1)
 
-y_batch2 <- DGEList(counts=assays(rse_gene)$counts[, batch==2], group=cond_bi[batch==2])
+y_batch2 <- DGEList(counts=assays(rse_gene)$counts[, batch==2], group=as.factor(cond_bi[batch==2]))
 y_batch2 <- calcNormFactors(y_batch2)
 design_batch2 <- model.matrix(~as.factor(cond_bi[batch==2]))
 y_batch2 <- estimateDisp(y_batch2, design_batch2)
 
+disp_df <- data.frame(batch1=y_batch1$tagwise.dispersion, batch2=y_batch2$tagwise.dispersion)
+disp_df_mlt <- melt(disp_df)
+png(file.path(study_SRP, 'dispersion_batch.png'), width=6, height=6, units="in", res=300)
+ggplot(disp_df_mlt, aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(x="Batch", y="Estimated gene-wise dispersion", 
+       title="Comparison of estimated dispersion across batches") +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", shape=18, size=3)
+dev.off()
+
+print(round(colMeans(disp_df), 3))
+print(round(colMedians(as.matrix(disp_df)), 3))
