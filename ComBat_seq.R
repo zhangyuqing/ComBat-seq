@@ -17,7 +17,7 @@
 
 ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
   ########  Preparation  ########  
-  library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1, otherwise run  # source("glmfit.R")
+  library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
   dge_obj <- DGEList(counts=counts, group=group)
   
   ## Prepare characteristics on batches

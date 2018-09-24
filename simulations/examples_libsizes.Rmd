@@ -1,6 +1,6 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "biological & batch effects"
+subtitle: "library size"
 author: Yuqing Zhang
 date: September 25, 2018
 output: html_notebook
@@ -8,9 +8,9 @@ output: html_notebook
 
 ## Design of the study
 
-We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. This is still an idealistic example: 1) batch affects all genes (in the same gene group) in the same way, 2) genes have common mean and dispersion.
+We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. 
 
-<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="450">
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_3.png" width="300">
 
 
 ## Simulate dataset {.tabset}
@@ -22,26 +22,16 @@ source("../ComBat_seq.R"); source("../helper_seq.R")
 set.seed(123)
 
 ## Simulate count matrix and batch factor
-y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
-y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+y1_ctrl <- matrix(rnbinom(100*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+y1_case <- matrix(rnbinom(100*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y1_null <- matrix(rnbinom(1900*10, mu=10, size=20), ncol=10)
 
-y2_ctrl <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y2_case <- matrix(rnbinom(50*5, mu=40, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y2_null <- matrix(rnbinom(950*10, mu=20, size=100), ncol=10)
-
-y3_ctrl <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y3_case <- matrix(rnbinom(50*5, mu=40, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
-y3_null <- matrix(rnbinom(950*10, mu=20, size=20), ncol=10)
-
-y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y4_case <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y4_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
+y2_ctrl <- matrix(rnbinom(100*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y2_case <- matrix(rnbinom(100*5, mu=40, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y2_null <- matrix(rnbinom(1900*10, mu=20, size=100), ncol=10)
 
 counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
-                cbind(y1_null, y2_null),
-                cbind(y3_ctrl, y3_case, y4_ctrl, y4_case),
-                cbind(y3_null, y4_null))
+                cbind(y1_null, y2_null))
 rownames(counts) <- paste0("gene", 1:nrow(counts))
 colnames(counts) <- paste0("sample", 1:ncol(counts))
 
@@ -59,10 +49,9 @@ counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
 counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
 ```
 
+Batch effect in this dataset is in the form of library size change - genes in Batch A are all higher in mean compared to Batch B. We show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text label), then by biological condition (color). Library sizes and dispersions are different across the two batches.
 
 ### Distribution of counts in samples
-
-Library sizes (average counts in each sample) are roughly similar across batches. The biologically activated samples have larger library sizes than the control samples. The dispersion parameters are different in two batches (Batch B: 0.05, Batch A: 0.01).
 
 ```{r, echo=FALSE}
 ## Boxplot of unadjusted counts in each sample
@@ -72,31 +61,7 @@ ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-### Batch effect in the dataset {.tabset}
-
-Genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image in the first tab below shows the average counts from each gene group. 
-
-In the second tab, we show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text label), then by biological condition (color).
-
-#### Counts in genes
-
-```{r, echo=FALSE}
-mean_counts_1 <- colMeans(counts[1:1000, ])
-mean_counts_2 <- colMeans(counts[1001:2000, ])
-
-mean_counts_df <- data.frame(samples=names(mean_counts_1), type1=mean_counts_1, type2=mean_counts_2)
-mean_counts_df_mlt <- melt(mean_counts_df, id.vars="samples")
-colnames(mean_counts_df_mlt)[2] <- "Type"
-mean_counts_df_mlt$samples <- factor(mean_counts_df_mlt$samples, levels=colnames(counts))
-
-ggplot(data=mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average counts for two types of genes", x="Samples", y="Average counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-#### Clustering of samples before adjustment
+### Batch effect in the dataset 
 
 ```{r, echo=FALSE}
 hc <- hclust(dist(t(counts)))
@@ -140,23 +105,6 @@ ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-#### Adjusted counts in genes
-
-```{r, echo=FALSE}
-adj_mean_counts_1 <- colMeans(adj_counts[1:1000, ])
-adj_mean_counts_2 <- colMeans(adj_counts[1001:2000, ])
-
-adj_mean_counts_df <- data.frame(samples=names(adj_mean_counts_1), type1=adj_mean_counts_1, type2=adj_mean_counts_2)
-adj_mean_counts_df_mlt <- melt(adj_mean_counts_df, id.vars="samples")
-colnames(adj_mean_counts_df_mlt)[2] <- "Type"
-adj_mean_counts_df_mlt$samples <- factor(adj_mean_counts_df_mlt$samples, levels=colnames(adj_counts))
-
-ggplot(data=adj_mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average adjusted counts for two types of genes", x="Samples", y="Average adjusted counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
 
 #### Clustering of samples after adjustment
 
@@ -168,8 +116,13 @@ adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend
 plot(adj_dend)  
 ```
 
+## Perform differential expression (DE) analysis
+
+
+
+
 
 ## Thoughts
 
-* We do have a computational problem when the total number of genes reach 20000 (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
+* 
 
