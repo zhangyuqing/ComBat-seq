@@ -68,7 +68,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   ## Estimate common dispersion within each batch as an initial value
   disp_common <- sapply(1:n_batch, function(i){
     if(n_batches[i]==1){
-      stop("Not supporting 1 sample per batch yet!")
+      stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){ 
       # not enough residual degree of freedom
       return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
@@ -81,7 +81,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   ## Estimate gene-wise dispersion within each batch 
   genewise_disp_lst <- lapply(1:n_batch, function(j){
     if(n_batches[j]==1){
-      stop("Not supporting 1 sample per batch yet!")
+      stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[j] <= ncol(design)-ncol(batchmod)+1){
       # not enough residual degrees of freedom - use the common dispersion
       # return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=NULL, 
@@ -180,13 +180,14 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   cat("\nAverage estimated gene-wise dispersion:\n"); print(sapply(genewise_disp_lst, mean))
   # GLM model
   cat("\n\n########  GLM model coefs  ########\n")
-  cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); print(tail(glm_f$coefficients))
-  cat("\nSanity check: estimated batch mean in gene group 1:\n"); print(exp(colMeans(glm_f$coefficients[1:1000,]))*mean(colSums(counts)))
+  cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); cat('...\n'); print(tail(glm_f$coefficients))
+  cat("\nSanity check: estimated batch mean in gene group 1:\n"); print(exp(colMeans(glm_f$coefficients[1:1000,1:n_batch]))*mean(colSums(counts)))
   cat("\nAverage background count alpha:\n"); print(mean(alpha_g)); print(exp(mean(alpha_g))*mean(colSums(counts)))
-  cat("\nCoefficients (model 2):\n"); print(head(glm_f2$coefficients)); print(tail(glm_f2$coefficients))
+  cat("\nCoefficients (model 2):\n"); print(head(glm_f2$coefficients)); cat('...\n'); print(tail(glm_f2$coefficients))
   # Posterior estimates of batch parameters
   cat("\n\n########  Batch effect estimates  ########\n")
   cat("Prior average exp(gamma) in gene group 1:\n")
+  cat("NOTE: adjusted mean = original mean / exp(gamma) \n")
   print(exp(colMeans(gamma_hat[1:1000,])))
   cat("\nPosterior average exp(gamma) in gene group 1:\n") 
   print(exp(colMeans(gamma_star_mat[1:1000,])))
