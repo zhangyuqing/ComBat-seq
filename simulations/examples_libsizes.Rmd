@@ -386,4 +386,5 @@ plot(perf_obj, main=paste("Adjusted counts (corrected library sizes), AUC =", ro
 ## Thoughts
 
 * Other prediction examples where library size difference could reduce performance of prediction? Maybe an unbalanced study design...
+* Simply scaling counts to match sample library sizes to their average may not be a good way to remove library size batch effect.
 * Library size is not that important of an issue, especially for differential expression.

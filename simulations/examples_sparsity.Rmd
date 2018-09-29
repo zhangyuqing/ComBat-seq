@@ -1,23 +1,19 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "add sparsity (0 counts) to simulate single-cell seq datasets"
+subtitle: "add random sparsity (0 counts) to simulate single-cell seq datasets"
 author: Yuqing Zhang
 date: September 29, 2018
 output: html_notebook
 ---
 
-## Goal 
-
-The goal of this simulation is to see whether ComBat-seq can be used on counts with 0s.
-
 ## Design of the study
 
-We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. This is still an idealistic example: 1) batch affects all genes (in the same gene group) in the same way, 2) genes have common mean and dispersion.
+The **goal** of this simulation is to see whether ComBat-seq can be used on counts with 0s, i.e. single-cell sequencing datasets.
 
-<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="450">
+We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. 
 
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="400">
 
-## Simulate dataset {.tabset}
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
@@ -57,84 +53,46 @@ full_mod <- TRUE
 ```
 
 ```{r, echo=FALSE, results='hide'}
-counts_df_mlt <- data.frame(Batch=NA, melt(counts))
-counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
-counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
-counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
+add0 <- function(p_zeros, counts, batch, group){
+  # add zeros to count matrix
+  #p_zeros <- 0.5  # percentage of zeros in the count matrix
+  n_zeros <- round(nrow(counts)*ncol(counts)*p_zeros, 0)
+  sel_locs <- sample(1:(nrow(counts)*ncol(counts)), n_zeros, replace=FALSE)
+  sel_mat <- rep(FALSE, nrow(counts)*ncol(counts))
+  sel_mat[sel_locs] <- TRUE
+  sel_mat <- matrix(sel_mat, nrow=nrow(counts), ncol=ncol(counts))
+  counts[sel_mat] <- 0
+
+  # remove genes with all 0 counts
+  zero_genes_ind <- apply(counts,1,function(x){all(x==0)})
+  cat("Number of genes with 0 in all samples:\n")
+  cat(sum(zero_genes_ind))
+  cat("\n\n")
+  counts <- counts[!zero_genes_ind, ]
+
+  # apply ComBat-seq
+  if(nrow(counts)!=0){
+    invisible(capture.output(adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)))
+  }else{
+    adj_counts <- NULL
+  }
+  return(adj_counts)
+}
 ```
 
 
-### Distribution of counts in samples
+## Distribution of adjusted counts in samples {.tabset}
 
-Library sizes (average counts in each sample) are roughly similar across batches. The biologically activated samples have larger library sizes than the control samples. The dispersion parameters are different in two batches (Batch B: 0.05, Batch A: 0.01).
+### 0% zero counts added
+
+```{r, echo=FALSE, results='hide'}
+invisible(capture.output(adj_counts_0 <- ComBat_seq(counts=counts, batch=batch, group=group)))
+```
 
 ```{r, echo=FALSE}
-## Boxplot of unadjusted counts in each sample
-ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
-  geom_boxplot() +
-  labs(title="Distribution of counts in each sample",x="Samples", y = "Counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-### Batch effect in the dataset {.tabset}
-
-Genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image in the first tab below shows the average counts from each gene group. 
-
-In the second tab, we show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text label), then by biological condition (color).
-
-#### Counts in genes
-
-```{r, echo=FALSE}
-mean_counts_1 <- colMeans(counts[1:1000, ])
-mean_counts_2 <- colMeans(counts[1001:2000, ])
-
-mean_counts_df <- data.frame(samples=names(mean_counts_1), type1=mean_counts_1, type2=mean_counts_2)
-mean_counts_df_mlt <- melt(mean_counts_df, id.vars="samples")
-colnames(mean_counts_df_mlt)[2] <- "Type"
-mean_counts_df_mlt$samples <- factor(mean_counts_df_mlt$samples, levels=colnames(counts))
-
-ggplot(data=mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average counts for two types of genes", x="Samples", y="Average counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-#### Clustering of samples before adjustment
-
-```{r, echo=FALSE}
-hc <- hclust(dist(t(counts)))
-dend <- as.dendrogram(hc)
-dend <- color_branches(dend, groupLabels=batch[order.dendrogram(dend)], 
-                       col=group[order.dendrogram(dend)]+2)
-plot(dend)  
-```
-
-
-## Apply ComBat-seq {.tabset}
-
-### Adjustment output
-
-We apply ComBat-seq to the above simulated dataset. Some intermediate results of ComBat-seq are printed out to help us better understand how this function works. Running time of ComBat-seq is also recorded.
-
-```{r}
-start_time <- Sys.time()
-adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
-end_time <- Sys.time()
-cat("\nRunning time of ComBat-seq:\n")
-print(end_time - start_time)
-```
-
-### Visualize adjusted data {.tabset}
-
-Similar as above, we visualize the adjusted counts in each sample (first tab), and the average adjusted counts from each gene group (second tab). Also, in the third tab, we can see that after the ComBat-seq adjustment, samples are no longer clustered by batch - rather, they cluster by biological condition as desired.
-
-#### Distribution of adjusted counts in samples
-
-```{r, echo=FALSE}
-adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts))
-adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="A"]] <- "A"
-adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="B"]] <- "B"
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_0))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_0)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_0)[batch=="B"]] <- "B"
 adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
 
 ## Boxplot of the adjusted counts in each sample
@@ -144,28 +102,166 @@ ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-#### Adjusted counts in genes
+### 10% zero counts added
 
 ```{r, echo=FALSE}
-adj_mean_counts_1 <- colMeans(adj_counts[1:1000, ])
-adj_mean_counts_2 <- colMeans(adj_counts[1001:2000, ])
+adj_counts_1 <- add0(p_zeros=0.1, counts, batch, group)
+```
 
-adj_mean_counts_df <- data.frame(samples=names(adj_mean_counts_1), type1=adj_mean_counts_1, type2=adj_mean_counts_2)
-adj_mean_counts_df_mlt <- melt(adj_mean_counts_df, id.vars="samples")
-colnames(adj_mean_counts_df_mlt)[2] <- "Type"
-adj_mean_counts_df_mlt$samples <- factor(adj_mean_counts_df_mlt$samples, levels=colnames(adj_counts))
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_1))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_1)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_1)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
 
-ggplot(data=adj_mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average adjusted counts for two types of genes", x="Samples", y="Average adjusted counts") +
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-#### Clustering of samples after adjustment
+
+
+
+### 20% zero counts added
 
 ```{r, echo=FALSE}
-adj_hc <- hclust(dist(t(adj_counts)))
+adj_counts_2 <- add0(p_zeros=0.2, counts, batch, group)
+```
+
+#### Distribution of adjusted counts in samples
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_2))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_2)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_2)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+### 30% zero counts added
+
+```{r, echo=FALSE}
+adj_counts_3 <- add0(p_zeros=0.3, counts, batch, group)
+```
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_3))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_3)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_3)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+### 40% zero counts added
+
+```{r, echo=FALSE}
+adj_counts_4 <- add0(p_zeros=0.4, counts, batch, group)
+```
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_4))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_4)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_4)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+### 50% zero counts added
+
+```{r, echo=FALSE}
+adj_counts_5 <- add0(p_zeros=0.5, counts, batch, group)
+```
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts_5))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_5)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts_5)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+## Clustering of samples after adjustment {.tabset}
+
+### 0% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_0)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+### 10% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_1)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+### 20% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_2)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+### 30% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_3)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+### 40% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_4)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+### 50% zero counts added
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts_5)))
 adj_dend <- as.dendrogram(adj_hc)
 adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
                            col=group[order.dendrogram(adj_dend)]+2)
@@ -175,5 +271,6 @@ plot(adj_dend)
 
 ## Thoughts
 
-* We do have a computational problem when the total number of genes reach 20000 (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
+* It seems that as the proportion of 0s increases, ComBat-seq tends to generate larger outlier counts. It handles batch effect worse, too.
+* However, randomly assigning positions in count matrix to be 0 is not a good way to mimic single-cell sequencing data. Could consider scRNA-seq simulator (like Splatter).
 
