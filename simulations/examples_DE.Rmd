@@ -1,6 +1,6 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "library composition - biological & batch effects"
+subtitle: "performance in differential expression (DE)"
 author: Yuqing Zhang
 date: September 25, 2018
 output: html_notebook
@@ -8,9 +8,9 @@ output: html_notebook
 
 ## Design of the study
 
-We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. This is still an idealistic example: 1) batch affects all genes (in the same gene group) in the same way, 2) genes have common mean and dispersion.
+We now start to test how well ComBat-seq would perform, compared to using other methods to address batch, in differential expression analysis. We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. This is still an idealistic example: 1) batch affects all genes (in the same gene group) in the same way, 2) genes have common mean and dispersion.
 
-<img src="../../study_design_2.png" width="450">
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="450">
 
 
 ## Simulate dataset {.tabset}

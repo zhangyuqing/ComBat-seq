@@ -1,23 +1,32 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "library size"
+subtitle: "sequencing depth batch effect"
 author: Yuqing Zhang
 date: September 25, 2018
 output: html_notebook
 ---
 
+## Intuition for this simulation
+
+Both of the previous two examples deal with batch effect in terms of library composition differences. But batch effect can be in the form of sequencing depth differences as well. This example shows batch effect in terms of the sequencing depth (library size) change. Normalization usually deals with this difference. But is normalization sufficient when library size change is specifically caused by batch? In other words, if samples within batches have relatively similar library sizes, but the library sizes are dramatically different across batch, will that affect downstream analysis, and is it accounted for in common methods? 
+
+I'm curious because based on our model, ComBat-seq will not adjust for library size difference - it models the observed library size as constants. If this problem is not sufficiently addressed, then we may want to change our model, maybe include an option to bring average library sizes in batches to the same level.
+
+**NOTE TO SELF:** batch effect in terms of both library size & composition?
+
+
 ## Design of the study
 
 We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. 
 
-<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_3.png" width="300">
+<img src="../../study_design_3.png" width="300">
 
 
 ## Simulate dataset {.tabset}
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
-sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), require, character.only=TRUE)
+sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2"), require, character.only=TRUE)
 source("../ComBat_seq.R"); source("../helper_seq.R")
 set.seed(123)
 
@@ -40,6 +49,8 @@ batch <- c(rep("B", ncol(y1_ctrl)+ncol(y1_case)),
 group <- c(rep(0, ncol(y1_ctrl)), rep(1, ncol(y1_case)),
            rep(0, ncol(y2_ctrl)), rep(1, ncol(y2_case)))
 full_mod <- TRUE
+
+de_ground_truth <- paste0("gene", 1:100)
 ```
 
 ```{r, echo=FALSE, results='hide'}
@@ -49,7 +60,7 @@ counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
 counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
 ```
 
-Batch effect in this dataset is in the form of library size change - genes in Batch A are all higher in mean compared to Batch B. We show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text label), then by biological condition (color). Library sizes and dispersions are different across the two batches.
+Batch effect in this dataset is in the form of library size change - all genes are higher in mean counts in Batch A compared to Batch B. Both library sizes and dispersions are different across the two batches. We show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text labels), then by biological condition (colors).
 
 ### Distribution of counts in samples
 
@@ -78,7 +89,7 @@ plot(dend)
 
 We apply ComBat-seq to the above simulated dataset. Some intermediate results of ComBat-seq are printed out to help us better understand how this function works. Running time of ComBat-seq is also recorded.
 
-```{r}
+```{r, echo=FALSE}
 start_time <- Sys.time()
 adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
 end_time <- Sys.time()
@@ -88,7 +99,7 @@ print(end_time - start_time)
 
 ### Visualize adjusted data {.tabset}
 
-Similar as above, we visualize the adjusted counts in each sample (first tab), and the average adjusted counts from each gene group (second tab). Also, in the third tab, we can see that after the ComBat-seq adjustment, samples are no longer clustered by batch - rather, they cluster by biological condition as desired.
+Similar as above, we visualize the adjusted counts in each sample (first tab). In the second tab, we can see that after the ComBat-seq adjustment, samples still first cluster by batch. Batch differences are not removed.
 
 #### Distribution of adjusted counts in samples
 
@@ -105,7 +116,6 @@ ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) +
   theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
-
 #### Clustering of samples after adjustment
 
 ```{r, echo=FALSE}
@@ -116,13 +126,264 @@ adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend
 plot(adj_dend)  
 ```
 
-## Perform differential expression (DE) analysis
+
+## Is normalization sufficient to correct for batch sequencing depth difference? {.tabset}
+
+In this section we test whether normalization methods correct for sequencing depth / library size differences caused by batch. We apply normalization methods in edgeR and DESeq to see how the normalized counts would look like. As seen below, there's still some batch differences after scaling counts by the scaling factors calculated by both packages. 
+
+### edgeR (TMM)
+
+```{r, echo=FALSE}
+y1 <- DGEList(counts=counts, group=as.factor(group))
+y1 <- calcNormFactors(y1, method="TMM")
+scale_factors <- y1$samples$norm.factors
+
+counts_norm_1 <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts), dimnames=dimnames(counts))
+for(i in 1:ncol(counts)){
+  counts_norm_1[,i] <- counts[,i] / scale_factors[i]
+}
+counts_norm_1 <- round(counts_norm_1, 0)
+
+counts_norm_1_df_mlt <- data.frame(Batch=NA, melt(counts_norm_1))
+counts_norm_1_df_mlt$Batch[counts_norm_1_df_mlt$Var2 %in% colnames(counts_norm_1)[batch=="A"]] <- "A"
+counts_norm_1_df_mlt$Batch[counts_norm_1_df_mlt$Var2 %in% colnames(counts_norm_1)[batch=="B"]] <- "B"
+counts_norm_1_df_mlt$Batch <- as.factor(counts_norm_1_df_mlt$Batch)
+
+ggplot(counts_norm_1_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Counts normalized by edgeR (TMM)",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+### DESeq2 (Median Ratio Method)
+
+```{r, echo=FALSE, results='hide'}
+dds <- DESeqDataSetFromMatrix(countData=counts, colData=data.frame(batch=as.factor(batch), condition=as.factor(group)), design=~condition)
+dds <- estimateSizeFactors(dds)
+# scale_factors_2 <- sizeFactors(dds)
+# 
+# counts_norm_2 <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts), dimnames=dimnames(counts))
+# for(j in 1:ncol(counts)){
+#   counts_norm_2[,j] <- counts[,j] / scale_factors_2[j]
+# }
+# counts_norm_2 <- round(counts_norm_2, 0)
+counts_norm_2 <- round(DESeq2::counts(dds, normalize=TRUE),0)
+#print(identical(tmp, counts_norm_2))
+
+counts_norm_2_df_mlt <- data.frame(Batch=NA, melt(counts_norm_2))
+counts_norm_2_df_mlt$Batch[counts_norm_2_df_mlt$Var2 %in% colnames(counts_norm_2)[batch=="A"]] <- "A"
+counts_norm_2_df_mlt$Batch[counts_norm_2_df_mlt$Var2 %in% colnames(counts_norm_2)[batch=="B"]] <- "B"
+counts_norm_2_df_mlt$Batch <- as.factor(counts_norm_2_df_mlt$Batch)
+
+ggplot(counts_norm_2_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Counts normalized by DESeq2 (median ratio method)",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
 
 
+## Differential expression (DE) analysis {.tabset}
 
+In theory, differential expression shouldn't be affected, at least if we use edgeR or DESeq. Both these models account for library size in their models.
+
+To validate this theory, we try two possible orders of preprocessing: 1) first correct for batch, then normalize the data (adjust sample library size differences through normalization); 2) first normalize the data, then correct for batch. We compare DE results in these two scenarios.
+
+### edgeR 
+
+#### ComBat-seq -> Normalize
+
+```{r, echo=FALSE}
+y1 <- DGEList(counts=adj_counts, group=as.factor(group))
+y1 <- calcNormFactors(y1, method="TMM")
+design <- model.matrix(~as.factor(group))
+y1 <- estimateDisp(y1, design)
+fit1 <- glmQLFit(y1, design)
+qlf1 <- glmQLFTest(fit1, coef=2)
+de_res1 <- topTags(qlf1, n=nrow(counts))$table
+de_called1 <- rownames(de_res1)[de_res1$FDR < 0.05]
+
+tpr1 <- length(intersect(de_called1, de_ground_truth)) / 100
+fpr1 <- length(setdiff(de_called1, de_ground_truth)) / 1900
+cat("TPR and FPR using edgeR: ComBat-seq -> Normalize\n")
+cat(round(c(TPR=tpr1, FPR=fpr1),4))
+rm(y1, de_res1, de_called1, tpr1, fpr1)
+```
+
+#### Normalize -> ComBat-seq
+
+```{r, echo=FALSE}
+y1 <- DGEList(counts=counts, group=as.factor(group))
+y1 <- calcNormFactors(y1, method="TMM")
+scale_factors <- y1$samples$norm.factors
+counts_norm_1 <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts), dimnames=dimnames(counts))
+for(i in 1:ncol(counts)){
+  counts_norm_1[,i] <- counts[,i] / scale_factors[i]
+}
+counts_norm_1 <- round(counts_norm_1, 0)
+
+invisible(capture.output(adj_counts_norm <- ComBat_seq(counts=counts_norm_1, batch=batch, group=group)))
+
+y1 <- DGEList(counts=adj_counts_norm, group=as.factor(group))
+y1 <- calcNormFactors(y1, method="TMM")
+design <- model.matrix(~as.factor(group))
+y1 <- estimateDisp(y1, design)
+fit1 <- glmQLFit(y1, design)
+qlf1 <- glmQLFTest(fit1, coef=2)
+de_res1 <- topTags(qlf1, n=nrow(counts))$table
+de_called1 <- rownames(de_res1)[de_res1$FDR < 0.05]
+
+tpr1 <- length(intersect(de_called1, de_ground_truth)) / 100
+fpr1 <- length(setdiff(de_called1, de_ground_truth)) / 1900
+cat("TPR and FPR using edgeR: Normalize -> ComBat-seq\n")
+cat(round(c(TPR=tpr1, FPR=fpr1),4))
+rm(y1, de_res1, de_called1, tpr1, fpr1)
+```
+
+### DESeq2
+
+#### ComBat-seq -> Normalize
+
+```{r, echo=FALSE}
+y2 <- suppressMessages(DESeqDataSetFromMatrix(countData=adj_counts, 
+                                              colData=data.frame(batch=as.factor(batch), condition=as.factor(group)),
+                                              design=~condition))
+y2 <- suppressMessages(DESeq(y2, fitType="local"))
+de_res2 <- results(y2, name="condition_1_vs_0")
+de_called2 <- rownames(de_res2)[de_res2$padj < 0.05]
+
+tpr2 <- length(intersect(de_called2, de_ground_truth)) / 100
+fpr2 <- length(setdiff(de_called2, de_ground_truth)) / 1900
+cat("TPR and FPR using DESeq2: ComBat-seq -> Normalize\n")
+cat(round(c(TPR=tpr2, FPR=fpr2),4))
+rm(y2, de_res2, de_called2, tpr2, fpr2)
+```
+
+#### Normalize -> ComBat-seq
+
+```{r, echo=FALSE}
+y2 <- suppressMessages(DESeqDataSetFromMatrix(countData=counts, 
+                                              colData=data.frame(batch=as.factor(batch), condition=as.factor(group)),
+                                              design=~condition))
+y2 <- estimateSizeFactors(y2)
+counts_norm_2 <- round(DESeq2::counts(y2, normalize=TRUE),0)
+
+invisible(capture.output(adj_counts_norm_2 <- ComBat_seq(counts=counts_norm_2, batch=batch, group=group)))
+
+y2 <- suppressMessages(DESeqDataSetFromMatrix(countData=adj_counts_norm_2, 
+                                              colData=data.frame(batch=as.factor(batch), condition=as.factor(group)), 
+                                              design=~condition))
+y2 <- suppressMessages(DESeq(y2, fitType="local"))
+de_res2 <- results(y2, name="condition_1_vs_0")
+de_called2 <- rownames(de_res2)[de_res2$padj < 0.05]
+
+tpr2 <- length(intersect(de_called2, de_ground_truth)) / 100
+fpr2 <- length(setdiff(de_called2, de_ground_truth)) / 1900
+cat("TPR and FPR using DESeq2: Normalize -> ComBat-seq\n")
+cat(round(c(TPR=tpr2, FPR=fpr2),4))
+rm(y2, de_res2, de_called2, tpr2, fpr2)
+```
+
+
+## Prediction {.tabset}
+
+Library size difference caused by batch does not matter in differential expression (especially since edgeR and DESeq2 takes library sizes into account in their models). However, ComBat-seq still doesn't correct for it. Depending on the goal of analysis, we may want to include an option for users to choose whether they want to bring library sizes of different batches to the same level.
+
+To (maybe) find a situation where we want to bring library sizes to the same level, I'm trying a prediction example. In this case, I would generate a test count matrix. 50 of 100 DE genes in test samples are activated in the same way as in the previously simulated dataset (which in this case we use as training set). 50 of non-DE genes are activated in test set but not in training set. All samples in the test set are generated in 1 batch. Biological signals are weaker in the test set than in the training set (a 1.5 fold change in counts). We use simple lasso logistic regression to make predictions, using 1) original counts, 2) counts adjusted by ComBat-seq without library normalization, 3) counts adjusted by ComBat-seq with library normalization (bring all library sizes to their simple average) for training. We generated ROC curves with AUC to measure performance in the three situations.
+
+```{r, echo=FALSE, results='hide'}
+v <- sapply(c("glmnet", "ROCR"), require, character.only=TRUE)
+set.seed(123)
+
+### Simulate test dataset
+cts_tmp <- matrix(rnbinom(2000*100, mu=10, size=1/0.03), ncol=100)
+cts_tmp[1:100, 51:100] <- matrix(rnbinom(100*50, mu=15, size=1/0.03), ncol=50)
+cts_test <- rbind(cts_tmp[1:50, ], cts_tmp[101:150, ], cts_tmp[51:100, ], cts_tmp[151:2000, ])
+y_tst <- as.factor(c(rep(0, 50), rep(1, 50)))
+```
+
+### Original Counts
+
+```{r, echo=FALSE}
+# use the batch-adjusted count matrix, transform train and test sets to logCPM
+log_trn_counts <- cpm(counts, log=TRUE)
+log_tst_counts <- cpm(cts_test, log=TRUE)
+
+# normalize the log transformed data
+trn_set <- apply(log_trn_counts, 1, scale)
+tst_set <- apply(log_tst_counts, 1, scale)
+
+# 4-fold CV to tune the model
+cv_obj <- cv.glmnet(x=trn_set, y=group, nfolds=4)
+best_lambda <- cv_obj$lambda.min
+lasso_mod <- glmnet(x=trn_set, y=group, family="binomial", lambda=best_lambda, alpha=1)
+pred_scores <- predict(lasso_mod, newx=tst_set)
+
+pred_obj <- prediction(pred_scores, as.factor(y_tst))
+perf_obj <- performance(pred_obj, "tpr","fpr")
+auc_res <- performance(pred_obj, "auc")@y.values[[1]]
+plot(perf_obj, main=paste("Original counts, AUC =", round(auc_res,3)))
+rm(trn_set, tst_set, auc_res, pred_obj, perf_obj)
+```
+
+### ComBat-seq WITHOUT library correction
+
+```{r, echo=FALSE}
+# use the batch-adjusted count matrix, transform train and test sets to logCPM
+log_adj_trn_counts <- cpm(adj_counts, log=TRUE)
+log_tst_counts <- cpm(cts_test, log=TRUE)
+
+# normalize the log transformed data
+trn_set <- apply(log_adj_trn_counts, 1, scale)
+tst_set <- apply(log_tst_counts, 1, scale)
+
+# 4-fold CV to tune the model
+cv_obj <- cv.glmnet(x=trn_set, y=group, nfolds=4)
+best_lambda <- cv_obj$lambda.min
+lasso_mod <- glmnet(x=trn_set, y=group, family="binomial", lambda=best_lambda, alpha=1)
+pred_scores <- predict(lasso_mod, newx=tst_set)
+
+pred_obj <- prediction(pred_scores, as.factor(y_tst))
+perf_obj <- performance(pred_obj, "tpr","fpr")
+auc_res <- performance(pred_obj, "auc")@y.values[[1]]
+plot(perf_obj, main=paste("Adjusted counts (no library correction), AUC =", round(auc_res,3)))
+rm(trn_set, tst_set, auc_res, pred_obj, perf_obj)
+```
+
+### ComBat-seq WITH library correction
+
+```{r, echo=FALSE}
+# correct for library size in training set
+lib_sizes <- colSums(counts)
+avg_lib_size <- mean(lib_sizes)
+scaling_factors <- lib_sizes / avg_lib_size
+adj_counts_norm <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts), dimnames=dimnames(counts))
+for(i in 1:ncol(counts)){
+  adj_counts_norm[,i] <- adj_counts[,i] / scaling_factors[i]
+}
+adj_counts_norm <- round(adj_counts_norm, 0)
+  
+# use the batch-adjusted count matrix post normalization, transform train and test sets to logCPM
+log_adj_trn_counts_norm <- cpm(adj_counts_norm, log=TRUE)
+log_tst_counts <- cpm(cts_test, log=TRUE)
+
+# normalize the log transformed data
+trn_set <- apply(log_adj_trn_counts_norm, 1, scale)
+tst_set <- apply(log_tst_counts, 1, scale)
+
+# 4-fold CV to tune the model
+cv_obj <- cv.glmnet(x=trn_set, y=group, nfolds=4)
+best_lambda <- cv_obj$lambda.min
+lasso_mod <- glmnet(x=trn_set, y=group, family="binomial", lambda=best_lambda, alpha=1)
+pred_scores <- predict(lasso_mod, newx=tst_set)
+
+pred_obj <- prediction(pred_scores, as.factor(y_tst))
+perf_obj <- performance(pred_obj, "tpr","fpr")
+auc_res <- performance(pred_obj, "auc")@y.values[[1]]
+plot(perf_obj, main=paste("Adjusted counts (corrected library sizes), AUC =", round(auc_res,3)))
+```
 
 
 ## Thoughts
 
-* 
-
+* Other prediction examples where library size difference could reduce performance of prediction? Maybe an unbalanced study design...
+* Library size is not that important of an issue, especially for differential expression.

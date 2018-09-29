@@ -177,7 +177,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   # dispersion
   cat("\n\n########  Dispersion  ########\n")
   cat("Estimated common dispersion:\n"); print(round(disp_common,3))
-  cat("\nAverage estimated gene-wise dispersion:\n"); print(sapply(genewise_disp_lst, mean))
+  cat("\nAverage estimated gene-wise dispersion:\n"); print(round(sapply(genewise_disp_lst, mean), 3))
   # GLM model
   cat("\n\n########  GLM model coefs  ########\n")
   cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); cat('...\n'); print(tail(glm_f$coefficients))

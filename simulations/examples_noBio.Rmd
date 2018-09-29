@@ -1,6 +1,6 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "batch effect only, no biological effect"
+subtitle: "library composition - batch effect only, no biological effect"
 author: Yuqing Zhang
 date: September 17, 2018
 output: html_notebook
@@ -28,7 +28,7 @@ edgeR applies EB shrinkage on dispersion parameter $\phi_{gi}$, through weighted
 
 This example is inspired by **Figure 1** from Leek et al. 2010. We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distribution. The dataset contains **2** batches, with **10** samples in each batch, and **no biological effect**. This dataset represents a simpliest case where ComBat-seq could be useful.
 
-![](C:/Users/zhang/Dropbox/Work/ComBat_Seq/study_design_1.PNG)
+![](../../study_design_1.PNG)
 
 ## Simulate dataset {.tabset}
 
