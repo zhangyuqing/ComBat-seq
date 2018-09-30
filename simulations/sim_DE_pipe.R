@@ -1,8 +1,10 @@
 rm(list=ls())
-setwd("~/Google Drive/ComBat_seq/DE_analysis/")
+#setwd("~/Google Drive/ComBat_seq/DE_analysis/")
+setwd("~/yuqingz/ComBat_seq/DE_analysis/")
 sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2", "polyester", "Biostrings"), 
        require, character.only=TRUE)
-script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+#script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+script_dir <- ".."
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
 set.seed(123)
 
@@ -14,9 +16,12 @@ alpha <- 0.05
 #N_genes <- 2000  #number of genes   
 coverage <- 20  
 read_length <- 100
-bio_fold <- 2  #fold change for biological condition
-batch_fold <- 1.8  #fold change for batch effect - assuming that batch behaves as fold change on counts
 
+command_args <- commandArgs(trailingOnly=TRUE)
+bio_fold <- as.numeric(command_args[1])  #2  #fold change for biological condition
+batch_fold <- as.numeric(command_args[2])  #3  #fold change for batch effect - assuming that batch behaves as fold change on counts
+exp_name <- paste0("bio", command_args[1], "_batch", command_args[2])
+  
 # FASTA annotation
 fasta_file <- system.file('extdata', 'chr22.fa', package='polyester')
 fasta <- readDNAStringSet(fasta_file)
@@ -106,12 +111,12 @@ for(iter in 1:iterations){
   rownames(DE_res) <- c("fpr", "tpr")
   DE_res <- as.data.frame(DE_res)
   
-  first.file <- !file.exist('results_fpr.csv')
+  first.file <- !file.exists(sprintf('fpr_%s.csv', exp_name))
   # type 1 error rate (false positive rate)
-  write.table(DE_res["fpr", ], 'results_fpr.csv', 
+  write.table(DE_res["fpr", ], sprintf('fpr_%s.csv', exp_name), 
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",")
   # power (true positive rate)
-  write.table(DE_res["tpr", ], 'results_tpr.csv', 
+  write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name), 
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",")
 }
 
