@@ -1,175 +1,116 @@
 ---
 title: "Application of ComBat-seq on simulated dataset"
-subtitle: "performance in differential expression (DE)"
+subtitle: "Performance in differential expression (DE)"
 author: Yuqing Zhang
-date: September 25, 2018
+date: October 1, 2018
 output: html_notebook
 ---
 
-## Design of the study
+## ComBat-seq model
 
-We now start to test how well ComBat-seq would perform, compared to using other methods to address batch, in differential expression analysis. We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. This is still an idealistic example: 1) batch affects all genes (in the same gene group) in the same way, 2) genes have common mean and dispersion.
+We developed a negative binomial GLM for adjusting for batch effect in count data. Gene-wise linear model:
 
-<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="450">
+$$
+\log(\mu_{gij}) = \alpha_g + X_j^T\beta_g + \gamma_{gi} + \log(N_j) \\
+var(y_{gij}) = \mu_{gij} + \phi_{gi}\mu_{gij}^2
+$$
 
+* $y_{gij}$: Counts of gene $g$ in sample $j$ from batch $i$.
+* $\mu_{gij}$: Expectation of counts of gene $g$ in sample $j$ from batch $i$.
+* $\alpha_g$: Background expression of gene $g$.
+* $X_j^T\beta_g$: Biological condition effect of sample $j$, design matrix and corresponding coefficients.
+* $\gamma_{gi}$: Mean batch parameter for batch $i$ on gene $g$.
+* $\phi_{gi}$: Dispersion batch parameter for batch $i$ on gene $g$.
 
-## Simulate dataset {.tabset}
-
-```{r, echo=FALSE, results='hide'}
-rm(list=ls())
-sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), require, character.only=TRUE)
-source("../ComBat_seq.R"); source("../helper_seq.R")
-set.seed(123)
-
-## Simulate count matrix and batch factor
-y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
-y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
-
-y2_ctrl <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y2_case <- matrix(rnbinom(50*5, mu=40, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y2_null <- matrix(rnbinom(950*10, mu=20, size=100), ncol=10)
-
-y3_ctrl <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y3_case <- matrix(rnbinom(50*5, mu=40, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
-y3_null <- matrix(rnbinom(950*10, mu=20, size=20), ncol=10)
-
-y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y4_case <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y4_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
-
-counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
-                cbind(y1_null, y2_null),
-                cbind(y3_ctrl, y3_case, y4_ctrl, y4_case),
-                cbind(y3_null, y4_null))
-rownames(counts) <- paste0("gene", 1:nrow(counts))
-colnames(counts) <- paste0("sample", 1:ncol(counts))
-
-batch <- c(rep("B", ncol(y1_ctrl)+ncol(y1_case)), 
-           rep("A", ncol(y2_ctrl)+ncol(y2_case))); table(batch)
-group <- c(rep(0, ncol(y1_ctrl)), rep(1, ncol(y1_case)),
-           rep(0, ncol(y2_ctrl)), rep(1, ncol(y2_case)))
-full_mod <- TRUE
-```
-
-```{r, echo=FALSE, results='hide'}
-counts_df_mlt <- data.frame(Batch=NA, melt(counts))
-counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
-counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
-counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
-```
+edgeR applies EB shrinkage on dispersion parameter $\phi_{gi}$, through weighted likelihood. But it doesn't apply shrinkage on $\gamma_{gi}$. This means that in theory, ComBat-seq should out-perform edgeR (including batch as covariate) when ...
 
 
-### Distribution of counts in samples
+## Simulation setup
 
-Library sizes (average counts in each sample) are roughly similar across batches. The biologically activated samples have larger library sizes than the control samples. The dispersion parameters are different in two batches (Batch B: 0.05, Batch A: 0.01).
+We test how well ComBat-seq performs, compared to using other methods to address batch effect, in differential expression analysis. Our primary study design is:
 
-```{r, echo=FALSE}
-## Boxplot of unadjusted counts in each sample
-ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
-  geom_boxplot() +
-  labs(title="Distribution of counts in each sample",x="Samples", y = "Counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="350">
 
-### Batch effect in the dataset {.tabset}
+In this design, we assume that batch effect is in the form of both **fold changes in the average of counts** and **differences in dispersion** across batches. We also simulate the count matrix using the *polyester* package, which is convenient because it uses the negative binomial model of edgeR. These are consistant with our ComBat-seq model assumptions. 
 
-Genes are systematically different between the two batches. The first 1000 genes are higher in Batch A, while the next 1000 genes are have larger counts in Batch B. The image in the first tab below shows the average counts from each gene group. 
+We perform DE with edgeR, and compare TPR and FPR in the following 3 settings:
 
-In the second tab, we show hiearachical clustering of samples in the dataset based on the unadjusted counts. Samples are clearly clustered by batch - they cluster first by batch (text label), then by biological condition (color).
++ original counts, not including batch as a covariate
++ original counts, with batch included as a covariate
++ counts adjusted by ComBat-seq
 
-#### Counts in genes
+Several factors can affect the performance of DE detection:
 
-```{r, echo=FALSE}
-mean_counts_1 <- colMeans(counts[1:1000, ])
-mean_counts_2 <- colMeans(counts[1001:2000, ])
+* Fold change of counts caused by batch / condition (mean batch effect)
+* Dispersion differences (variance batch effect)
+* Balanced / unbalanced study design
+* Number of samples in total, and in batch / condition groups
+* Number of reads per gene (sequencing depth)
 
-mean_counts_df <- data.frame(samples=names(mean_counts_1), type1=mean_counts_1, type2=mean_counts_2)
-mean_counts_df_mlt <- melt(mean_counts_df, id.vars="samples")
-colnames(mean_counts_df_mlt)[2] <- "Type"
-mean_counts_df_mlt$samples <- factor(mean_counts_df_mlt$samples, levels=colnames(counts))
-
-ggplot(data=mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average counts for two types of genes", x="Samples", y="Average counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-#### Clustering of samples before adjustment
-
-```{r, echo=FALSE}
-hc <- hclust(dist(t(counts)))
-dend <- as.dendrogram(hc)
-dend <- color_branches(dend, groupLabels=batch[order.dendrogram(dend)], 
-                       col=group[order.dendrogram(dend)]+2)
-plot(dend)  
-```
+We systematically evaluate ComBat-seq in different combinations of these factors, to see whether / when ComBat-seq works better than including batch as a covariate in edgeR.
 
 
-## Apply ComBat-seq {.tabset}
+## An example where ComBat-seq "works"...
 
-### Adjustment output
-
-We apply ComBat-seq to the above simulated dataset. Some intermediate results of ComBat-seq are printed out to help us better understand how this function works. Running time of ComBat-seq is also recorded.
-
-```{r}
-start_time <- Sys.time()
-adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
-end_time <- Sys.time()
-cat("\nRunning time of ComBat-seq:\n")
-print(end_time - start_time)
-```
-
-### Visualize adjusted data {.tabset}
-
-Similar as above, we visualize the adjusted counts in each sample (first tab), and the average adjusted counts from each gene group (second tab). Also, in the third tab, we can see that after the ComBat-seq adjustment, samples are no longer clustered by batch - rather, they cluster by biological condition as desired.
-
-#### Distribution of adjusted counts in samples
-
-```{r, echo=FALSE}
-adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts))
-adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="A"]] <- "A"
-adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="B"]] <- "B"
-adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
-
-## Boxplot of the adjusted counts in each sample
-ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
-  geom_boxplot() +
-  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-#### Adjusted counts in genes
-
-```{r, echo=FALSE}
-adj_mean_counts_1 <- colMeans(adj_counts[1:1000, ])
-adj_mean_counts_2 <- colMeans(adj_counts[1001:2000, ])
-
-adj_mean_counts_df <- data.frame(samples=names(adj_mean_counts_1), type1=adj_mean_counts_1, type2=adj_mean_counts_2)
-adj_mean_counts_df_mlt <- melt(adj_mean_counts_df, id.vars="samples")
-colnames(adj_mean_counts_df_mlt)[2] <- "Type"
-adj_mean_counts_df_mlt$samples <- factor(adj_mean_counts_df_mlt$samples, levels=colnames(adj_counts))
-
-ggplot(data=adj_mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
-  geom_line(aes(color=Type)) +
-  geom_point() +
-  labs(title="Average adjusted counts for two types of genes", x="Samples", y="Average adjusted counts") +
-  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
-```
-
-#### Clustering of samples after adjustment
-
-```{r, echo=FALSE}
-adj_hc <- hclust(dist(t(adj_counts)))
-adj_dend <- as.dendrogram(adj_hc)
-adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
-                           col=group[order.dendrogram(adj_dend)]+2)
-plot(adj_dend)  
-```
+* Fold changes: Biological - 1.5, Batch - 2 
+* Dispersion: Batch 1 - 0.1, Batch 2 - 0.001
+* Study design: Unbalanced 
+* Number of samples: 20 in total 
+* Reads per gene: Median 24 (coverage 1)
 
 
-## Thoughts
 
-* We do have a computational problem when the total number of genes reach 20000 (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
 
+
+## Systematic evaluation 
+
+All boxplots show distributions of TPR and FPR from 100 simulations.
+
+### Fold change of counts caused by batch / condition {.tabset}
+
+With the other parameters fixed:
+
+* Dispersion differences: Batch 1 - , Batch 2 -
+* Study design: 
+* Number of samples: 
+* Reads per gene:
+
+We test fold change of counts at these levels:
+
+
+
+
+
+### Dispersion differences {.tabset}
+
+
+
+
+### Study design {.tabset}
+
+With the other parameters fixed:
+
+* Fold changes: Biological -, Batch -
+* Dispersion differences: Batch 1 - , Batch 2 -
+* Number of samples: 
+* Reads per gene:
+
+#### Balanced
+
+
+#### Unbalanced
+
+
+
+### Number of samples in total, and in batch / condition groups {.tabset}
+
+
+### Sequencing depth {.tabset}
+
+
+
+## Thoughts & future work
+
+* Explore real count matrix to see if ComBat-seq assumptions are true: true WRT fold change, but more importantly, dispersion differences across batch?
+* Try DESeq too
+* When the total number of genes is large, ComBat-seq will slow down dramatically (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
