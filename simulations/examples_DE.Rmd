@@ -1,5 +1,5 @@
 ---
-title: "Application of ComBat-seq on simulated dataset"
+title: "Application of ComBat-seq on simulated datasets"
 subtitle: "Performance in differential expression (DE)"
 author: Yuqing Zhang
 date: October 1, 2018
@@ -21,15 +21,17 @@ $$
 * $X_j^T\beta_g$: Biological condition effect of sample $j$, design matrix and corresponding coefficients.
 * $\gamma_{gi}$: Mean batch parameter for batch $i$ on gene $g$.
 * $\phi_{gi}$: Dispersion batch parameter for batch $i$ on gene $g$.
+* $N_j$: Library size (total number of counts) in sample $j$.
 
-edgeR applies EB shrinkage on dispersion parameter $\phi_{gi}$, through weighted likelihood. But it doesn't apply shrinkage on $\gamma_{gi}$. This means that in theory, ComBat-seq should out-perform edgeR (including batch as covariate) when ...
+edgeR applies EB shrinkage on dispersion parameter $\phi_{gi}$, through weighted likelihood. But it doesn't apply shrinkage on $\gamma_{gi}$. This means that, in theory, ComBat-seq should out-perform edgeR (including batch as covariate) when ...
+
 
 
 ## Simulation setup
 
 We test how well ComBat-seq performs, compared to using other methods to address batch effect, in differential expression analysis. Our primary study design is:
 
-<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_2.png" width="350">
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_4.png" width="425">
 
 In this design, we assume that batch effect is in the form of both **fold changes in the average of counts** and **differences in dispersion** across batches. We also simulate the count matrix using the *polyester* package, which is convenient because it uses the negative binomial model of edgeR. These are consistant with our ComBat-seq model assumptions. 
 
@@ -50,7 +52,8 @@ Several factors can affect the performance of DE detection:
 We systematically evaluate ComBat-seq in different combinations of these factors, to see whether / when ComBat-seq works better than including batch as a covariate in edgeR.
 
 
-## An example where ComBat-seq "works"...
+
+## An example where ComBat-seq works...
 
 * Fold changes: Biological - 1.5, Batch - 2 
 * Dispersion: Batch 1 - 0.1, Batch 2 - 0.001
@@ -58,59 +61,240 @@ We systematically evaluate ComBat-seq in different combinations of these factors
 * Number of samples: 20 in total 
 * Reads per gene: Median 24 (coverage 1)
 
+```{r, echo=FALSE, results='hide'}
+sapply(c("knitr", "kableExtra", "ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
+results_dir <- "~/Google Drive/ComBat_seq/DE_analysis"
+
+####  Read in results files
+tpr_file <- "tpr_simExample_bio15_batch2_sizes10_1000_N20_U_depth1.csv"
+fpr_file <- "fpr_simExample_bio15_batch2_sizes10_1000_N20_U_depth1.csv"
+
+tpr_res <- read.csv(file.path(results_dir, tpr_file))
+fpr_res <- read.csv(file.path(results_dir, fpr_file))
+
+p_tpr <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(x="", y="TPR", title="Power")
+p_fpr <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  geom_hline(yintercept=0.05, col="red") +
+  labs(x="", y="FPR", title="Type-I error rate") 
+grid.arrange(p_fpr, p_tpr, ncol=2)
+```
 
 
 
+## Systematic evaluation {.tabset}
 
-## Systematic evaluation 
+All boxplots show distributions of TPR and FPR from 50 simulations.
 
-All boxplots show distributions of TPR and FPR from 100 simulations.
+Setup start point:
 
-### Fold change of counts caused by batch / condition {.tabset}
+* Fold changes: Biological - 2, Batch - 2 
+* Dispersion: Batch 1 - 0.01, Batch 2 - 0.1
+* Study design: Balanced 
+* Number of samples: 20 in total 
+* Reads per gene: Median 120 (coverage 5)
 
-With the other parameters fixed:
-
-* Dispersion differences: Batch 1 - , Batch 2 -
-* Study design: 
-* Number of samples: 
-* Reads per gene:
-
-We test fold change of counts at these levels:
+Note that this setup was arbitrarily selected - based on my exploration of real count data, it seems a okay place to start. Based on this setup, we vary each factor in turn, while keeping all the other factors fixed.
 
 
+### Fold change of counts caused by batch / condition 
+
+Test fold change of counts at these levels:
+
+```{r, echo=FALSE, results='hide'}
+FC_df <- t(data.frame(Biological=rep("2",4), Batch=c("1.5", "2", "3", "4")))
+colnames(FC_df) <- paste("Fold change", 1:4)
+kable(FC_df) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=8}
+batch_fold_seq <- c(1.5, 2, 3, 4)
+p_tpr_lst <- p_fpr_lst <- list()
+
+for(i in 1:length(batch_fold_seq)){
+  tpr_file <- sprintf("tpr_simFC_bio2_batch%s_sizes100_10_N20_B_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+  fpr_file <- sprintf("fpr_simFC_bio2_batch%s_sizes100_10_N20_B_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=sprintf("Bio FC 2, Batch FC %s", batch_fold_seq[i]))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=sprintf("Bio FC 2, Batch FC %s", batch_fold_seq[i])) 
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
+             p_fpr_lst[[3]], p_tpr_lst[[3]], p_fpr_lst[[4]], p_tpr_lst[[4]], 
+             ncol=2, widths=rep(2,2), heights=rep(2,4))
+rm(p_fpr_lst, p_tpr_lst, batch_fold_seq)
+```
 
 
+### Dispersion differences 
 
-### Dispersion differences {.tabset}
+Test dispersion differences across batch at these levels:
+
+```{r, echo=FALSE, results='hide'}
+Disp_df <- t(data.frame(Batch1=c("1", "0.1", "0.01", "0.001"), Batch2=rep("0.1", 4)))
+colnames(Disp_df) <- paste("Dispersion", 1:4)
+kable(Disp_df) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=8}
+size1_seq <- c(1, 10, 100, 1000)
+p_tpr_lst <- p_fpr_lst <- list()
+
+for(i in 1:length(size1_seq)){
+  tpr_file <- sprintf("tpr_simDisp_bio2_batch2_sizes%s_10_N20_B_depth5.csv", size1_seq[i])
+  fpr_file <- sprintf("fpr_simDisp_bio2_batch2_sizes%s_10_N20_B_depth5.csv", size1_seq[i])
+
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=sprintf("Batch1 Disp %s, Batch2 Disp 0.1", 1/size1_seq[i]))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=sprintf("Batch1 Disp %s, Batch2 Disp 0.1", 1/size1_seq[i])) 
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
+             p_fpr_lst[[3]], p_tpr_lst[[3]], p_fpr_lst[[4]], p_tpr_lst[[4]], 
+             ncol=2, widths=rep(2,2), heights=rep(2,4))
+rm(p_fpr_lst, p_tpr_lst, size1_seq)
+```
 
 
+### Number of samples in total, and in batch / condition groups 
+
+Test sample sizes at these levels:
+
+```{r, echo=FALSE, results='hide'}
+N_df <- t(data.frame(c("20", "40", "80")))
+colnames(N_df) <- paste("Sample size", 1:3); rownames(N_df) <- ""
+kable(N_df) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=6}
+N_seq <- c(20, 40, 80)
+p_tpr_lst <- p_fpr_lst <- list()
+
+for(i in 1:length(N_seq)){
+  tpr_file <- sprintf("tpr_simNsample_bio2_batch2_sizes100_10_N%s_B_depth5.csv", N_seq[i])
+  fpr_file <- sprintf("fpr_simNsample_bio2_batch2_sizes100_10_N%s_B_depth5.csv", N_seq[i])
+
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=sprintf("Total sample size = %s", N_seq[i]))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=sprintf("Total sample size = %s", N_seq[i])) 
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]], p_fpr_lst[[3]], p_tpr_lst[[3]], 
+             ncol=2, widths=rep(2,2), heights=rep(2,3))
+rm(p_fpr_lst, p_tpr_lst, N_seq)
+```
 
 
-### Study design {.tabset}
+### Study design 
 
-With the other parameters fixed:
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=4}
+design_seq <- c('B', 'U')
+p_tpr_lst <- p_fpr_lst <- list()
 
-* Fold changes: Biological -, Batch -
-* Dispersion differences: Batch 1 - , Batch 2 -
-* Number of samples: 
-* Reads per gene:
+for(i in 1:length(design_seq)){
+  tpr_file <- sprintf("tpr_simDesign_bio2_batch2_sizes100_10_N20_%s_depth5.csv", design_seq[i])
+  fpr_file <- sprintf("fpr_simDesign_bio2_batch2_sizes100_10_N20_%s_depth5.csv", design_seq[i])
 
-#### Balanced
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=ifelse(design_seq[i]=="B", "Balanced", "Unbalanced"))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=ifelse(design_seq[i]=="B", "Balanced", "Unbalanced")) 
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
+             ncol=2, widths=rep(2,2), heights=rep(2,2))
+rm(p_fpr_lst, p_tpr_lst, design_seq)
+```
 
 
-#### Unbalanced
+### Sequencing depth 
 
+Test reads per gene at these levels:
 
+```{r, echo=FALSE, results='hide'}
+depth_df <- t(data.frame(c("24", "120", "240", "480")))
+colnames(depth_df) <- paste("Median reads per gene", 1:4); rownames(depth_df) <- ""
+kable(depth_df) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
 
-### Number of samples in total, and in batch / condition groups {.tabset}
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=8}
+depth_seq <- c(1, 5, 10, 20)
+p_tpr_lst <- p_fpr_lst <- list()
 
+for(i in 1:length(depth_seq)){
+  tpr_file <- sprintf("tpr_simDepth_bio2_batch2_sizes100_10_N20_B_depth%s.csv", depth_seq[i])
+  fpr_file <- sprintf("fpr_simDepth_bio2_batch2_sizes100_10_N20_B_depth%s.csv", depth_seq[i])
 
-### Sequencing depth {.tabset}
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=sprintf("Coverage %s", depth_seq[i]))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=sprintf("Coverage %s", depth_seq[i])) 
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
+             p_fpr_lst[[3]], p_tpr_lst[[3]], p_fpr_lst[[4]], p_tpr_lst[[4]], 
+             ncol=2, widths=rep(2,2), heights=rep(2,4))
+rm(p_fpr_lst, p_tpr_lst, depth_seq)
+```
 
 
 
 ## Thoughts & future work
 
-* Explore real count matrix to see if ComBat-seq assumptions are true: true WRT fold change, but more importantly, dispersion differences across batch?
+* Why? In theory, ComBat-seq should out-perform edgeR (including batch as covariate) when ...
+* Explore real count matrix to see if ComBat-seq assumptions are true: true WRT fold change, but more importantly, dispersion differences across batch? Also get a sense of actual fold change levels, dispersion differences, number of samples, etc.
 * Try DESeq too
 * When the total number of genes is large, ComBat-seq will slow down dramatically (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
+
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/run_time_plot.png" width="600">
+
