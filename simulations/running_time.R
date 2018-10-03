@@ -5,7 +5,7 @@ sapply(c("ggplot2", "reshape2", "gridExtra"), require, character.only=TRUE)
 source("ComBat-Seq/ComBat_seq.R"); source("ComBat-Seq/helper_seq.R")
 set.seed(123)
 
-n_gene_seq <- seq(2000, 40000, 1000)
+n_gene_seq <- seq(2000, 20000, 1000)
 run_time_seq <- rep(NA, length(n_gene_seq))
 
 for(i in 1:length(n_gene_seq)){

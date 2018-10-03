@@ -86,7 +86,7 @@ grid.arrange(p_fpr, p_tpr, ncol=2)
 
 ## Systematic evaluation {.tabset}
 
-All boxplots show distributions of TPR and FPR from 50 simulations.
+Boxplots show distributions of TPR and FPR from 50 simulations.
 
 Setup start point:
 
@@ -179,7 +179,7 @@ rm(p_fpr_lst, p_tpr_lst, size1_seq)
 ```
 
 
-### Number of samples in total, and in batch / condition groups 
+### Sample size
 
 Test sample sizes at these levels:
 
@@ -296,5 +296,6 @@ rm(p_fpr_lst, p_tpr_lst, depth_seq)
 * Try DESeq too
 * When the total number of genes is large, ComBat-seq will slow down dramatically (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
 
+<!-- 
 <img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/run_time_plot.png" width="600">
-
+--> 

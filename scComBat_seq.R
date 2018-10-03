@@ -1,4 +1,4 @@
-#' Adjust for batch effects using an empirical Bayes framework in RNA-seq raw counts
+#' Adjust for batch effects using an empirical Bayes framework in single-cell RNA-seq raw counts
 #' 
 #' ComBat_seq is an extension to the ComBat method using Negative Binomial model.
 #' 
@@ -15,9 +15,9 @@
 #' @export
 #' 
 
-ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", ref_batch=NULL){
+ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
   ########  Preparation  ########  
-  library(edgeR)  # require bioconductor >= 3.7, edgeR >= 3.22.1, otherwise run  # source("glmfit.R")
+  library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
   dge_obj <- DGEList(counts=counts, group=group)
   
   ## Prepare characteristics on batches
@@ -29,19 +29,16 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
   n_sample <- sum(n_batches)
   cat("Found",n_batch,'batches\n')
   
-  ## Select reference
-  if(is.null(ref_batch)){ref_batch <- sample(levels(batch), 1)}  #if not specified, randomly select a batch
-  cat("Using", ref_batch, 'as reference batch\n')
-  
   ## Make design matrix 
   # batch
-  batchmod <- model.matrix(~-1+batch)
-  batchmod[, paste0('batch',ref_batch)] <- 1
+  batchmod <- model.matrix(~-1+batch)  # colnames: levels(batch)
   # covariate
   group <- as.factor(group)
   if(full_mod & nlevels(group)>1){
+    cat("Using full model in ComBat-seq.\n")
     mod <- model.matrix(~group)
   }else{
+    cat("Using null model in ComBat-seq.\n")
     mod <- model.matrix(~1, data=as.data.frame(t(counts)))
   }
   # combine
@@ -50,7 +47,6 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
   ## Check for intercept in covariates, and drop if present
   check <- apply(design, 2, function(x) all(x == 1))
   #if(!is.null(ref)){check[ref]=FALSE} ## except don't throw away the reference batch indicator
-  check[1:n_batch] <- FALSE
   design <- as.matrix(design[,!check])
   cat("Adjusting for",ncol(design)-ncol(batchmod),'covariate(s) or covariate level(s)\n')
   
@@ -72,7 +68,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
   ## Estimate common dispersion within each batch as an initial value
   disp_common <- sapply(1:n_batch, function(i){
     if(n_batches[i]==1){
-      stop("Not supporting 1 sample per batch yet!")
+      stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){ 
       # not enough residual degree of freedom
       return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
@@ -85,9 +81,9 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
   ## Estimate gene-wise dispersion within each batch 
   genewise_disp_lst <- lapply(1:n_batch, function(j){
     if(n_batches[j]==1){
-      stop("Not supporting 1 sample per batch yet!")
+      stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[j] <= ncol(design)-ncol(batchmod)+1){
-      # not enough residual degrees of freedom
+      # not enough residual degrees of freedom - use the common dispersion
       # return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=NULL, 
       #                               dispersion=disp_common[j], prior.df=0))
       return(rep(disp_common[j], nrow(counts)))
@@ -108,16 +104,16 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
     
   ########  Estimate parameters from NB GLM  ########
   glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
-  # alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
-  # new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
-  #   vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
-  # # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
-  # glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
-  #                          offset=new_offset, prior.count=0) 
+  alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
+  new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
+    vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
+  # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
+  glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
+                           offset=new_offset, prior.count=0) 
   
-  #beta_hat <- glm_f$coefficients[, (n_batch+1):ncol(design)]  #glm_f2$coefficients[, (n_batch+1):ncol(design)]
-  gamma_hat <- glm_f$coefficients[, 2:n_batch] #glm_f2$coefficients[, 1:n_batch]
-  mu_hat <- glm_f$fitted.values #glm_f2$fitted.values
+  #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
+  gamma_hat <- glm_f2$coefficients[, 1:n_batch]
+  mu_hat <- glm_f2$fitted.values
   phi_hat <- do.call(cbind, genewise_disp_lst)
   #if(!identical(colnames(gamma_hat), colnames(phi_hat))){stop("gamma and phi don't match!")}
   #tmp = mu_hat - exp(glm_f2$coefficients %*% t(design) + new_offset); tmp[1:6,1:6]; mean(tmp)
@@ -161,7 +157,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
                                                           new_mu=new_mu, new_phi=new_phi)
   }
   
-  ## normalize for library size?
+  # ## normalize for library size?
   # if(normalize!="none"){
   #   if(!(normalize %in% c("TMM","RLE","upperquartile"))){
   #     stop("Normalization method not supported")
@@ -174,5 +170,38 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE, normalize="none", re
   #   }
   # }
   
+  ## Print out some intermediate results
+  if(nrow(counts)>=2000){
+    # design matrix
+    cat("\n########  Design matrix  ########\n")
+    cat("Partial design matrix:\n"); print(head(design))
+    # dispersion
+    cat("\n\n########  Dispersion  ########\n")
+    cat("Estimated common dispersion:\n"); print(round(disp_common,3))
+    cat("\nAverage estimated gene-wise dispersion:\n"); print(round(sapply(genewise_disp_lst, mean), 3))
+    # GLM model
+    cat("\n\n########  GLM model coefs  ########\n")
+    cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); cat('...\n'); print(tail(glm_f$coefficients))
+    cat("\nSanity check: estimated batch mean in gene group 1:\n"); print(exp(colMeans(glm_f$coefficients[1:1000,1:n_batch]))*mean(colSums(counts)))
+    cat("\nAverage background count alpha:\n"); print(mean(alpha_g)); print(exp(mean(alpha_g))*mean(colSums(counts)))
+    cat("\nCoefficients (model 2):\n"); print(head(glm_f2$coefficients)); cat('...\n'); print(tail(glm_f2$coefficients))
+    # Posterior estimates of batch parameters
+    cat("\n\n########  Batch effect estimates  ########\n")
+    cat("Prior average exp(gamma) in gene group 1:\n")
+    cat("NOTE: adjusted mean = original mean / exp(gamma) \n")
+    print(exp(colMeans(gamma_hat[1:1000,])))
+    cat("\nPosterior average exp(gamma) in gene group 1:\n") 
+    print(exp(colMeans(gamma_star_mat[1:1000,])))
+    cat("\nPrior average dispersion:\n")
+    print(colMeans(phi_hat))
+    cat("\nPosterior average dispersion:\n")
+    print(colMeans(phi_star_mat))
+    cat("\nBatch-free mean mu:\n")
+    print(mean(mu_star[1001:2000,batch=="A"])); print(mean(mu_star[1001:2000,batch=="B"]))
+    cat("\nBatch-free dispersion phi:\n")
+    print(mean(phi_star))
+  }
+  
+  dimnames(adjust_counts) <- dimnames(counts)
   return(adjust_counts)
 }
