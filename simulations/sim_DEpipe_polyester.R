@@ -1,10 +1,10 @@
 rm(list=ls())
-setwd("~/Google Drive/ComBat_seq/DE_analysis/")
-#setwd("~/yuqingz/ComBat_seq/DE_analysis/")
+#setwd("~/Google Drive/ComBat_seq/DE_analysis/")
+setwd("~/yuqingz/ComBat_seq/DE_analysis/")
 sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2", "polyester", "Biostrings"), 
        require, character.only=TRUE)
-script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
-#script_dir <- ".."
+#script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+script_dir <- ".."
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
 set.seed(123)
 
@@ -19,9 +19,9 @@ size_2 <- as.numeric(command_args[5])   # 1/dispersion in batch 2 ("Arnold")
 N_total_sample <- as.numeric(command_args[6])  #20  #total number of samples in the study
 balanced <- as.logical(command_args[7])  #TRUE  #logical, if TRUE balanced design
 coverage <- as.numeric(command_args[8])  #20  
-#factor_exam="FC"; bio_fold=1.5; batch_fold=2; size_1=20; size_2=100; N_total_sample=20; balanced=TRUE; coverage=1
+#factor_exam="FC"; bio_fold=1.5; batch_fold=1.5; size_1=100; size_2=10; N_total_sample=10; balanced=TRUE; coverage=5
   
-iterations <- 3  #number of simulations to run
+iterations <- 100 #5  #number of simulations to run
 alpha <- 0.05
 exp_name <- paste0("sim", factor_exam, "_bio", bio_fold, "_batch", batch_fold, "_sizes", size_1, '_', size_2,
                    "_N", N_total_sample, ifelse(balanced, "_B", "_U"), "_depth", coverage)
@@ -37,7 +37,9 @@ fasta <- readDNAStringSet(fasta_file)
 readspertx <- round(coverage * width(fasta) / read_length)
 
 # study design
-if(balanced){
+if(balanced & N_total_sample==10){
+  N_samples <- c(2, 3, 2, 3)
+}else if(balanced){
   N_samples <- rep(N_total_sample/4, 4)
 }else{
   N_samples <- N_total_sample * c(0.1, 0.4, 0.4, 0.1)  #  20%-80% unbalanced
@@ -110,7 +112,11 @@ for(iter in 1:iterations){
   tpr2 <- length(intersect(de_called2, de_ground_truth)) / N_DE
   fpr2 <- length(setdiff(de_called2, de_ground_truth)) / N_nonDE
     
-    
+  
+  # On adjusted count - current ComBat
+  
+  
+  
   # On adjusted count - ComBat-seq
   adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
   

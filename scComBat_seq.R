@@ -16,6 +16,11 @@
 #' 
 
 ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
+  ########  Look into the data
+  
+  
+  
+  
   ########  Preparation  ########  
   library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
   dge_obj <- DGEList(counts=counts, group=group)
