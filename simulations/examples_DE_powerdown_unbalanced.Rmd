@@ -1,8 +1,8 @@
 ---
 title: "Application of ComBat-seq on simulated datasets"
-subtitle: "DE - adjusted power and added comparison to current ComBat"
+subtitle: "DE - in unbalanced study design"
 author: Yuqing Zhang
-date: October 5, 2018
+date: October 8, 2018
 output: html_notebook
 ---
 
@@ -53,7 +53,7 @@ We systematically evaluate ComBat-seq in different combinations of these factors
 
 ```{r, echo=FALSE, results='hide'}
 sapply(c("knitr", "kableExtra", "ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
-results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_powerdown"
+results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_powerdown_unbalanced"
 ```
 
 
@@ -65,7 +65,7 @@ Setup start point:
 
 * Fold changes: Biological - 1.5, Batch - 1.5
 * Dispersion: Batch 1 - 0.01, Batch 2 - 0.1
-* Study design: Balanced 
+* Study design: **Unbalanced** 
 * Number of samples: 10 in total 
 * Reads per gene: Median 120 (coverage 5)
 
@@ -88,8 +88,8 @@ batch_fold_seq <- c(1, 1.5, 2, 3)
 p_tpr_lst <- p_fpr_lst <- list()
 
 for(i in 1:length(batch_fold_seq)){
-  tpr_file <- sprintf("tpr_simFC_bio15_batch%s_sizes100_10_N10_B_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
-  fpr_file <- sprintf("fpr_simFC_bio15_batch%s_sizes100_10_N10_B_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+  tpr_file <- sprintf("tpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+  fpr_file <- sprintf("fpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
 
   tpr_res <- read.csv(file.path(results_dir, tpr_file))
   fpr_res <- read.csv(file.path(results_dir, fpr_file))
@@ -130,8 +130,8 @@ size1_seq <- c(1, 10, 100, 1000)
 p_tpr_lst <- p_fpr_lst <- list()
 
 for(i in 1:length(size1_seq)){
-  tpr_file <- sprintf("tpr_simDisp_bio15_batch15_sizes%s_10_N10_B_depth5.csv", size1_seq[i])
-  fpr_file <- sprintf("fpr_simDisp_bio15_batch15_sizes%s_10_N10_B_depth5.csv", size1_seq[i])
+  tpr_file <- sprintf("tpr_simDisp_bio15_batch15_sizes%s_10_N10_U_depth5.csv", size1_seq[i])
+  fpr_file <- sprintf("fpr_simDisp_bio15_batch15_sizes%s_10_N10_U_depth5.csv", size1_seq[i])
 
   tpr_res <- read.csv(file.path(results_dir, tpr_file))
   fpr_res <- read.csv(file.path(results_dir, fpr_file))
@@ -172,8 +172,8 @@ N_seq <- c(10, 20, 40)#, 80)
 p_tpr_lst <- p_fpr_lst <- list()
 
 for(i in 1:length(N_seq)){
-  tpr_file <- sprintf("tpr_simNsample_bio15_batch15_sizes100_10_N%s_B_depth5.csv", N_seq[i])
-  fpr_file <- sprintf("fpr_simNsample_bio15_batch15_sizes100_10_N%s_B_depth5.csv", N_seq[i])
+  tpr_file <- sprintf("tpr_simNsample_bio15_batch15_sizes100_10_N%s_U_depth5.csv", N_seq[i])
+  fpr_file <- sprintf("fpr_simNsample_bio15_batch15_sizes100_10_N%s_U_depth5.csv", N_seq[i])
 
   tpr_res <- read.csv(file.path(results_dir, tpr_file))
   fpr_res <- read.csv(file.path(results_dir, fpr_file))
@@ -197,37 +197,6 @@ rm(p_fpr_lst, p_tpr_lst, N_seq)
 ```
 
 
-### Study design 
-
-```{r, echo=FALSE, results='hide', fig.width=4, fig.height=4}
-design_seq <- c('B', 'U')
-p_tpr_lst <- p_fpr_lst <- list()
-
-for(i in 1:length(design_seq)){
-  tpr_file <- sprintf("tpr_simDesign_bio15_batch15_sizes100_10_N10_%s_depth5.csv", design_seq[i])
-  fpr_file <- sprintf("fpr_simDesign_bio15_batch15_sizes100_10_N10_%s_depth5.csv", design_seq[i])
-
-  tpr_res <- read.csv(file.path(results_dir, tpr_file))
-  fpr_res <- read.csv(file.path(results_dir, fpr_file))
-  
-  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
-    geom_boxplot() +
-    labs(x="", y="TPR", title=ifelse(design_seq[i]=="B", "Balanced", "Unbalanced")) +
-    theme(axis.text.x=element_text(angle=45, hjust=1))
-  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
-    geom_boxplot() +
-    geom_hline(yintercept=0.05, col="red") +
-    labs(x="", y="FPR", title=ifelse(design_seq[i]=="B", "Balanced", "Unbalanced")) +
-    theme(axis.text.x=element_text(angle=45, hjust=1))
-  
-  rm(tpr_file, tpr_res, fpr_file, fpr_res)
-}
-
-grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
-             ncol=2, widths=rep(2,2), heights=rep(2,2))
-rm(p_fpr_lst, p_tpr_lst, design_seq)
-```
-
 
 ### Sequencing depth 
 
@@ -245,8 +214,8 @@ depth_seq <- c(1, 5, 10, 20)
 p_tpr_lst <- p_fpr_lst <- list()
 
 for(i in 1:length(depth_seq)){
-  tpr_file <- sprintf("tpr_simDepth_bio15_batch15_sizes100_10_N10_B_depth%s.csv", depth_seq[i])
-  fpr_file <- sprintf("fpr_simDepth_bio15_batch15_sizes100_10_N10_B_depth%s.csv", depth_seq[i])
+  tpr_file <- sprintf("tpr_simDepth_bio15_batch15_sizes100_10_N10_U_depth%s.csv", depth_seq[i])
+  fpr_file <- sprintf("fpr_simDepth_bio15_batch15_sizes100_10_N10_U_depth%s.csv", depth_seq[i])
 
   tpr_res <- read.csv(file.path(results_dir, tpr_file))
   fpr_res <- read.csv(file.path(results_dir, fpr_file))
@@ -274,10 +243,7 @@ rm(p_fpr_lst, p_tpr_lst, depth_seq)
 
 ## Thoughts & future work
 
-* Why? In theory, ComBat-seq should out-perform edgeR (including batch as covariate) when ...
-* Explore real count matrix to see if ComBat-seq assumptions are true: true WRT fold change, but more importantly, dispersion differences across batch? Also get a sense of actual fold change levels, dispersion differences, number of samples, etc.
-* Try DESeq too
-* When the total number of genes is large, ComBat-seq will slow down dramatically (i.e., if we simulate the count matrix to contain 20000 rows instead of 2000, the function will take >20mins to run). Need to optimize the algorithm.
+* 
 
 <!-- 
 <img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/run_time_plot.png" width="600">
