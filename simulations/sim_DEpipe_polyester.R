@@ -1,8 +1,7 @@
 rm(list=ls())
 #setwd("~/Google Drive/ComBat_seq/DE_analysis/")
 setwd("~/yuqingz/ComBat_seq/DE_analysis/")
-sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2", "polyester", "Biostrings"), 
-       require, character.only=TRUE)
+sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 #script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
 script_dir <- ".."
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
@@ -46,14 +45,10 @@ if(balanced & N_total_sample==10){
 }
 
 fold_changes <- matrix(NA, nrow=length(fasta), ncol=length(N_samples))  
-# fold_changes[1:50, ] <- matrix(rep(c(1,bio_fold,batch_fold,bio_fold*batch_fold),50), ncol=length(N_samples), byrow=TRUE)
-# fold_changes[51:450, ] <- matrix(rep(c(1,1,batch_fold,batch_fold),400), ncol=length(N_samples), byrow=TRUE)
-# fold_changes[451:500, ] <- matrix(rep(c(batch_fold,bio_fold*batch_fold,1,bio_fold),50), ncol=length(N_samples), byrow=TRUE)
-# fold_changes[501:length(fasta), ] <- matrix(rep(c(batch_fold,batch_fold,1,1),length(fasta)-500), ncol=length(N_samples), byrow=TRUE)
 fold_changes[1:50, ] <- matrix(rep(c(1, bio_fold, batch_fold, bio_fold*batch_fold), 50),
-                                ncol=length(N_samples), byrow=TRUE)  # up-regulated
+                               ncol=length(N_samples), byrow=TRUE)  # up-regulated
 fold_changes[51:100, ] <- matrix(rep(c(bio_fold, 1, bio_fold*batch_fold, batch_fold), 50),
-                               ncol=length(N_samples), byrow=TRUE)  # down-regulated
+                                 ncol=length(N_samples), byrow=TRUE)  # down-regulated
 fold_changes[101:length(fasta), ] <- matrix(rep(c(1, 1, batch_fold, batch_fold), length(fasta)-100),
                                             ncol=length(N_samples), byrow=TRUE)   # "null" genes
 
@@ -77,6 +72,7 @@ for(iter in 1:iterations){
   
   # load count matrix and remove fastq files to save space
   load(file.path(exp_name, "sim_counts_matrix.rda"))
+  rownames(counts_matrix) <- paste0("gene", 1:nrow(counts_matrix))
   de_ground_truth <- rownames(counts_matrix)[de_ground_truth_ind]
   
   # batch and biological vectors
@@ -86,7 +82,7 @@ for(iter in 1:iterations){
   
   ####  DE analysis (with edgeR)
   # On original counts with batch effect
-  y1 <- DGEList(counts=counts_matrix, group=as.factor(group))
+  y1 <- DGEList(counts=counts_matrix)
   y1 <- calcNormFactors(y1, method="TMM")
   design <- model.matrix(~as.factor(group))
   y1 <- estimateDisp(y1, design)
@@ -100,7 +96,7 @@ for(iter in 1:iterations){
 
     
   # On original count - include batch as covariate
-  y2 <- DGEList(counts=counts_matrix, group=as.factor(group))
+  y2 <- DGEList(counts=counts_matrix)
   y2 <- calcNormFactors(y2, method="TMM")
   design2 <- model.matrix(~ as.factor(group) + as.factor(batch))
   y2 <- estimateDisp(y2, design2)
@@ -113,29 +109,64 @@ for(iter in 1:iterations){
   fpr2 <- length(setdiff(de_called2, de_ground_truth)) / N_nonDE
     
   
-  # On adjusted count - current ComBat
-  
-  
-  
-  # On adjusted count - ComBat-seq
-  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
-  
-  y3 <- DGEList(counts=adj_counts_combatseq, group=as.factor(group))
-  y3 <- calcNormFactors(y3, method="TMM")
-  design3 <- model.matrix(~as.factor(group))
-  y3 <- estimateDisp(y3, design3)
-  fit3 <- glmQLFit(y3, design3)
-  qlf3 <- glmQLFTest(fit3, coef=2)
-  de_res3 <- topTags(qlf3, n=nrow(counts_matrix))$table
-  de_called3 <- rownames(de_res3)[de_res3$PValue < alpha]
+  # On adjusted count - current ComBat + linear model for DE
+  log_counts <- cpm(counts_matrix, log=TRUE)  # use logCPM to make data more normal
+  adj_counts <- ComBat(log_counts, batch=batch, mod=model.matrix(~as.factor(group)))
+  pval_seq <- apply(adj_counts, 1, function(x, group){
+    x_norm <- scale(x, center=TRUE, scale=TRUE)
+    fit3 <- lm(x_norm ~ as.factor(group))
+    return(summary(fit3)$coefficients[2, 4])
+  }, group=group)
+  de_called3 <- rownames(counts_matrix)[pval_seq < alpha]
   
   tpr3 <- length(intersect(de_called3, de_ground_truth)) / N_DE
   fpr3 <- length(setdiff(de_called3, de_ground_truth)) / N_nonDE
+  
+  
+  # On adjusted count - current ComBat + voom
+  design4 <- model.matrix(~as.factor(group))
+  v <- voom(adj_counts, design=design4)
+  fit4 <- lmFit(v, design4)
+  fit4 <- eBayes(fit4)
+  de_res4 <- topTable(fit4, coef=2, number=nrow(counts_matrix))
+  de_called4 <- rownames(de_res4)[de_res4$P.Value < alpha]
+  
+  tpr4 <- length(intersect(de_called4, de_ground_truth)) / N_DE
+  fpr4 <- length(setdiff(de_called4, de_ground_truth)) / N_nonDE
+  
+  
+  # On adjusted count - ComBat-seq + edgeR
+  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
+  
+  y5 <- DGEList(counts=adj_counts_combatseq)
+  y5 <- calcNormFactors(y5, method="TMM")
+  design5 <- model.matrix(~as.factor(group))
+  y5 <- estimateDisp(y5, design5)
+  fit5 <- glmQLFit(y5, design5)
+  qlf5 <- glmQLFTest(fit5, coef=2)
+  de_res5 <- topTags(qlf5, n=nrow(counts_matrix))$table
+  de_called5 <- rownames(de_res5)[de_res5$PValue < alpha]
+  
+  tpr5 <- length(intersect(de_called5, de_ground_truth)) / N_DE
+  fpr5 <- length(setdiff(de_called5, de_ground_truth)) / N_nonDE
+  
+  
+  # On adjusted count - ComBat-seq + voom
+  design6 <- model.matrix(~as.factor(group))
+  v2 <- voom(adj_counts_combatseq, design=design6)
+  fit6 <- lmFit(v2, design6)
+  fit6 <- eBayes(fit6)
+  de_res6 <- topTable(fit6, coef=2, number=nrow(counts_matrix))
+  de_called6 <- rownames(de_res6)[de_res6$P.Value < alpha]
+  
+  tpr6 <- length(intersect(de_called6, de_ground_truth)) / N_DE
+  fpr6 <- length(setdiff(de_called6, de_ground_truth)) / N_nonDE
     
   
   ####  Collect and output results
-  DE_res <- matrix(c(fpr1, tpr1, fpr2, tpr2, fpr3, tpr3), nrow=2)
-  colnames(DE_res) <- c("Raw counts", "One-step", "ComBat-seq")
+  DE_res <- matrix(c(fpr1, tpr1, fpr2, tpr2, fpr3, tpr3, fpr4, tpr4, fpr5, tpr5, fpr6, tpr6), nrow=2)
+  colnames(DE_res) <- c("RawCounts.edgeR", "OneStep.edgeR", "ComBat.lm", 
+                        "ComBat.voom", "ComBat-seq.edgeR", "ComBat-seq.voom")
   rownames(DE_res) <- c("fpr", "tpr")
   DE_res <- as.data.frame(DE_res)
   

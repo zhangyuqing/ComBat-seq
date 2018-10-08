@@ -57,35 +57,6 @@ results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_powerdown"
 ```
 
 
-
-## An example where ComBat-seq works...
-
-* Fold changes: Biological - 1.5, Batch - 2 
-* Dispersion: Batch 1 - 0.1, Batch 2 - 0.001
-* Study design: Unbalanced 
-* Number of samples: 20 in total 
-* Reads per gene: Median 24 (coverage 1)
-
-```{r, echo=FALSE, results='hide'}
-####  Read in results files
-tpr_file <- "tpr_simExample_bio15_batch2_sizes10_1000_N20_U_depth1.csv"
-fpr_file <- "fpr_simExample_bio15_batch2_sizes10_1000_N20_U_depth1.csv"
-
-tpr_res <- read.csv(file.path(results_dir, tpr_file))
-fpr_res <- read.csv(file.path(results_dir, fpr_file))
-
-p_tpr <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  labs(x="", y="TPR", title="Power")
-p_fpr <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  geom_hline(yintercept=0.05, col="red") +
-  labs(x="", y="FPR", title="Type-I error rate") 
-grid.arrange(p_fpr, p_tpr, ncol=2)
-```
-
-
-
 ## Systematic evaluation {.tabset}
 
 Boxplots show distributions of TPR and FPR from 50 simulations.
