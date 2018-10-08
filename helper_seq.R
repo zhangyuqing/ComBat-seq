@@ -27,7 +27,12 @@ match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
   for(a in 1:nrow(counts_sub)){
     for(b in 1:ncol(counts_sub)){
       tmp_p <- pnbinom(counts_sub[a, b], mu=old_mu[a, b], size=1/old_phi[a])
-      new_counts_sub[a,b] <- qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+      if(tmp_p==1){
+        new_counts_sub[a,b] <- counts_sub[a, b]  
+        # for outlier count, if p==1, will return Inf values -> use original count instead
+      }else{
+        new_counts_sub[a,b] <- qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+      }
     }
   }
   return(new_counts_sub)
