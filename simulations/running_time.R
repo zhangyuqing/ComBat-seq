@@ -5,7 +5,7 @@ sapply(c("ggplot2", "reshape2", "gridExtra"), require, character.only=TRUE)
 source("ComBat-Seq/ComBat_seq.R"); source("ComBat-Seq/helper_seq.R")
 set.seed(123)
 
-n_gene_seq <- seq(2000, 20000, 1000)
+n_gene_seq <- seq(2000, 14000, 1000)
 run_time_seq <- rep(NA, length(n_gene_seq))
 
 for(i in 1:length(n_gene_seq)){
@@ -40,7 +40,7 @@ for(i in 1:length(n_gene_seq)){
 
 save(run_time_seq, n_gene_seq, file="run_time.RData")
 
-run_time_df <- data.frame(N_genes=n_gene_seq, run_time=run_time_seq)
+run_time_df <- data.frame(N_genes=n_gene_seq[1:13], run_time=run_time_seq[1:13])
 png("run_time_plot.png", width=6, height=6, units="in", res=300)
 ggplot(data=run_time_df, aes(x=N_genes, y=run_time, group=1)) +
   geom_line()+

@@ -16,7 +16,7 @@
 #' 
 
 ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
-  ########  Look into the data
+  ########  Handle sparsity
   
   
   

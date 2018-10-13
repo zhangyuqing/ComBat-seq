@@ -3,6 +3,8 @@ title: "Real data report - RNA-seq"
 output: html_notebook
 ---
 
-This file reports my exploration of batch effect in real bulk RNA-seq datasets
+This file reports my exploration of batch effect in real bulk RNA-seq datasets.
 
+## SRO047233
 
+recount is

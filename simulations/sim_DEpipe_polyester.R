@@ -1,5 +1,5 @@
 rm(list=ls())
-#setwd("~/Google Drive/ComBat_seq/DE_analysis/")
+#setwd("~/Google Drive/ComBat_seq/DE_analysis_tmp/")
 setwd("~/yuqingz/ComBat_seq/DE_analysis/")
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 #script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
@@ -18,7 +18,7 @@ size_2 <- as.numeric(command_args[5])   # 1/dispersion in batch 2 ("Arnold")
 N_total_sample <- as.numeric(command_args[6])  #20  #total number of samples in the study
 balanced <- as.logical(command_args[7])  #TRUE  #logical, if TRUE balanced design
 coverage <- as.numeric(command_args[8])  #20  
-#factor_exam="FC"; bio_fold=1.5; batch_fold=1.5; size_1=100; size_2=10; N_total_sample=10; balanced=TRUE; coverage=5
+#factor_exam="FC"; bio_fold=1.5; batch_fold=1; size_1=100; size_2=10; N_total_sample=10; balanced=TRUE; coverage=5
   
 iterations <- 100 #5  #number of simulations to run
 alpha <- 0.05
@@ -63,7 +63,7 @@ N_nonDE <- length(fasta) - N_DE
 
 ####  Run pipeline
 for(iter in 1:iterations){
-  cat(paste("Simulation", iter, '\n'))
+  cat(paste("\nSimulation", iter, '\n'))
   
   ####  Simulate datasets
   if(dir.exists(exp_name)){unlink(exp_name, recursive=TRUE)}
