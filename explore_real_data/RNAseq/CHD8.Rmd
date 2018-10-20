@@ -1,6 +1,6 @@
 ---
 title: "Exploration of real bulk RNA-seq datasets"
-subtitle: "ReCount data SRP047233"
+subtitle: "ReCount data for CHD8 regulatory network (SRP047233)"
 author: Yuqing Zhang
 date: "`r Sys.Date()`"
 output:
@@ -10,25 +10,25 @@ output:
 bibliography: refs.bib
 ---
 
-### Introduction
+## Introduction
 
 ReCount is a public database of pre-processed RNA-seq gene count data. The SVAseq paper [@leek2014svaseq] used 2 studies with gene measurements in two separate Hapmap populations, and looked for differentially expressed genes between genders in the two studies combined. Exploration of the same ReCount data used in SVAseq are summarized in a separate file (svaseq_recount).
 
 Here, I searched the ReCount database with the keyword "batch", and found a few datasets with abstracts containing this word (which means that the dataset potentially has batch effect). One of them is SRP047233 [@sugathan2014chd8]. This dataset aims to investigate the impact of decreased CHD8 expression on the expression of genes in downstream (CHD8-regulated) network. Truncating mutation of CHD8 is an important risk factor for autism spectrum disorder (ASD).
 
-#### Overall design
+### Overall design
 
 RNA-seq in NPCs treated with shRNAs targeting CHD8. For controls, NPCs were treated with shRNAs targeting GFP and LacZ. Infection and sequencing was carried out in two separate batches, with one GFP and one LacZ sample in each batch. All samples were sequenced in two technical replicates. (https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP047233)
 
 
-#### Download data & basic info
+### Download data & basic info
 
 First, we download the data using the recount R package as shown in its vignette. Note that we use the read_counts() function instead of scale_counts() to convert the provided base pair counts to read counts, so that we get the raw counts without normalization.
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
-output_dir <- "~/Google Drive/ComBat_seq/real_data_example/RNAseq/SRP047233"
-sapply(c("recount", "DESeq2", "edgeR","dendextend", "ggplot2", "reshape2", "gridExtra", "scales", "ggdendro"), 
+output_dir <- "~/Google Drive/ComBat_seq/real_data_example/RNAseq/CHD8"
+sapply(c("recount", "DESeq2", "edgeR", "dendextend", "ggplot2", "reshape2", "gridExtra", "scales", "ggdendro"), 
        require, character.only=TRUE)
 
 
@@ -122,11 +122,11 @@ rm(n_zeros_in_genes, percent_zeros_in_genes, percent_zeros_df)
 
 
 
-### Existence of batch effect {.tabset}
+## Existence of batch effect {.tabset}
 
 We first visualize the data using PCA and hierarchical clustering, to see if there is any batch effect in the dataset. Based on these plots, I believe there exists a certain level of batch effect in the data, as samples cluster more by batch than by biological condition.
 
-#### PCA
+### PCA
 
 ```{r, echo=FALSE, fig.height=2, fig.width=5}
 pca_obj <- plotPCA(DESeqTransform(rse_gene), intgroup=c("batch", "condition_bi")) 
@@ -145,7 +145,7 @@ p_cond <- ggplot(pca_obj$data, aes(x=PC1, y=PC2, color=cond)) +
 grid.arrange(p_batch, p_cond, ncol=2)
 ```
 
-#### Dendrograms
+### Dendrograms
 
 ```{r, echo=FALSE, fig.height=3, fig.width=5}
 counts_norm <- scale(t(assay(rse_gene,"counts")), center=TRUE, scale=TRUE)
@@ -176,7 +176,7 @@ rm(counts_norm, ddata, dend, hc, p_batch, p_cond, pca_obj, pd_batch, pd_cond, tm
 ```
 
 
-### Library size
+## Library size
 
 Next, we take a look at the observed library sizes of samples, and to see if there is a difference in library size across batches.
 
@@ -211,7 +211,7 @@ rm(plib1, plib2)
 ```
 
 
-### Gene expression distribution
+## Gene expression distribution
 
 Our next step is to interrogate the gene expression distributions. 
 
@@ -286,11 +286,11 @@ rm(cts_subset, cpm_subset, logCPM_subset, lib_sizes, lib_sizes_df, chosen_id, da
 ```
 
 
-#### Fold changes in mean {.tabset}
+### Fold changes in mean {.tabset}
 
 We then use edgeR to perform differential expression analysis, and calculate (log-) fold changes of all genes between condition groups and batches.
 
-##### Change WRT condition
+#### Change WRT condition
 
 To rule out the impact of batch effect, we limit our DE analysis WRT biological condition in one of the batches. Here we specify the batch to be **Batch 1**.
 
@@ -346,7 +346,7 @@ rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes,
 ```
 
 
-##### Change WRT batch
+#### Change WRT batch
 
 We are also interested to see how the mean gene counts change across batches (i.e. **degree of mean batch effect**). To explore this mean batch effect, we perform DE WRT batch. To rule out the impact of biological condition, we perform this analysis within **control** samples only. Note that this DE is not true DE - it's testing if there is a significant mean difference between two batches. Some genes will not be different in mean, while some will. Which means that batch doesn't affect all genes in the same way.
 
@@ -405,7 +405,7 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
 ```
 
 
-#### Dispersion
+### Dispersion
 
 Aside from mean gene counts, we are also interested in dispersions in the two batches. We plot the gene-wise dispersion estimates from edgeR:
 
@@ -441,16 +441,16 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 ```
 
 
-### Summary
+## Summary
 
 + There exists a certain level of batch effect in this dataset.
 
 
-### Session info 
+## Session info 
 
 ```{r, echo=FALSE}
 sessionInfo()
 ```
 
 
-### References
+## References
