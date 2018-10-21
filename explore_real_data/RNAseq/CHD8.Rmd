@@ -12,13 +12,13 @@ bibliography: refs.bib
 
 ## Introduction
 
-ReCount is a public database of pre-processed RNA-seq gene count data. The SVAseq paper [@leek2014svaseq] used 2 studies with gene measurements in two separate Hapmap populations, and looked for differentially expressed genes between genders in the two studies combined. Exploration of the same ReCount data used in SVAseq are summarized in a separate file (svaseq_recount).
+ReCount is a public database of pre-processed RNA-seq gene count data [@collado2017reproducible]. The SVAseq paper [@leek2014svaseq] used 2 studies with gene measurements in two separate Hapmap populations, and looked for differentially expressed genes between genders in the two studies combined. Exploration of the same ReCount data used in SVAseq are summarized in a separate file (svaseq_recount).
 
 Here, I searched the ReCount database with the keyword "batch", and found a few datasets with abstracts containing this word (which means that the dataset potentially has batch effect). One of them is SRP047233 [@sugathan2014chd8]. This dataset aims to investigate the impact of decreased CHD8 expression on the expression of genes in downstream (CHD8-regulated) network. Truncating mutation of CHD8 is an important risk factor for autism spectrum disorder (ASD).
 
 ### Overall design
 
-RNA-seq in NPCs treated with shRNAs targeting CHD8. For controls, NPCs were treated with shRNAs targeting GFP and LacZ. Infection and sequencing was carried out in two separate batches, with one GFP and one LacZ sample in each batch. All samples were sequenced in two technical replicates. (https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP047233)
+RNA-seq in NPCs treated with shRNAs targeting CHD8. For controls, NPCs were treated with shRNAs targeting GFP and LacZ. Infection and sequencing was carried out in 2 separate batches, with one GFP and one LacZ sample in each batch. All samples were sequenced in two technical replicates. (https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP047233)
 
 
 ### Download data & basic info
@@ -82,21 +82,36 @@ print(table(group[batch==1]))
 cat("In batch 2:")
 print(table(group[batch==2]))
 
+
 cat("\n\n######  Genes  #######\n")
 cat("- Total number of genes:\n")
 print(nrow(rse_gene))
 
 cat("\n- Number of genes with 0 counts:\n")
 gene_row_with_zeros <- apply(assay(rse_gene, "counts"), 1, function(x){any(x==0)})
-print(c(sum(gene_row_with_zeros), round(sum(gene_row_with_zeros)/nrow(rse_gene),3)))
-cat("\n- Number of genes with ONLY 0s:\n")
-gene_all_zeros <- apply(assay(rse_gene, "counts"), 1, function(x){all(x==0)})
-print(c(sum(gene_all_zeros), round(sum(gene_all_zeros)/nrow(rse_gene),3)))
+cat(c(sum(gene_row_with_zeros), percent(sum(gene_row_with_zeros)/nrow(rse_gene))))
 
-rm(gene_all_zeros, gene_row_with_zeros)
+cat("\n\n- Number of genes with maximum 10 counts:\n")
+gene_row_low <- apply(assay(rse_gene, "counts"), 1, function(x){all(x<=10)})
+cat(c(sum(gene_row_low), percent(sum(gene_row_low)/nrow(rse_gene))))
+
+cat("\n\n- Number of genes with ONLY 0s:\n")
+gene_all_zeros <- apply(assay(rse_gene, "counts"), 1, function(x){all(x==0)})
+cat(c(sum(gene_all_zeros), percent(sum(gene_all_zeros)/nrow(rse_gene))))
+
+
+cat("\n\n\n######  Counts  #######\n")
+cat("- Range of count in whole dataset:\n")
+print(round(range(assay(rse_gene, "counts")), 3))
+
+cat("\n- Average count in whole dataset:\n")
+print(paste("Mean:", round(mean(assay(rse_gene, "counts")), 3)))
+print(paste("Median:", round(median(assay(rse_gene, "counts")), 3)))
+
+rm(gene_row_with_zeros, gene_row_low, gene_all_zeros)
 ```
 
-For the following analysis, **we remove genes with all-zero values across all samples**. 
+For the following analysis, **we remove genes with only zero values across all samples**. 
 
 ```{r}
 ## Remove genes with all 0 counts
@@ -112,11 +127,11 @@ percent_zeros_in_genes <- n_zeros_in_genes / ncol(rse_gene)
 percent_zeros_df <- data.frame(genes=rownames(rse_gene), value=percent_zeros_in_genes)
 ggplot(percent_zeros_df, aes(0, value)) + 
       geom_violin() +
-      #geom_boxplot(width=0.15) +
+      geom_boxplot(aes(0.7, value), width=0.15) +
       coord_flip() +
-      geom_text(aes(label=round(median(percent_zeros_df$value),2), x=0.1, y=median(percent_zeros_df$value))) +
+      annotate(geom="text", label=percent(median(percent_zeros_df$value)), x=0.85, y=median(percent_zeros_df$value)) +
       labs(y="% Zeros", title="Proportion of zeros across samples for the remaining genes") +
-      theme(axis.title.y=element_blank())
+      theme(axis.title.y=element_blank())#, axis.text.y=element_blank())
 rm(n_zeros_in_genes, percent_zeros_in_genes, percent_zeros_df)
 ```
 
@@ -151,7 +166,7 @@ grid.arrange(p_batch, p_cond, ncol=2)
 counts_norm <- scale(t(assay(rse_gene,"counts")), center=TRUE, scale=TRUE)
 hc <- hclust(dist(counts_norm))
 dend <- as.dendrogram(hc)
-ddata <- dendro_data(dend, type = "rectangle")
+ddata <- dendro_data(dend, type="rectangle")
 
 meta_info <- data.frame(colData(rse_gene)[, c("batch", "condition_bi")], sample=colnames(rse_gene))
 colnames(meta_info)[2] <- "cond"

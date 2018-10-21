@@ -1,6 +1,6 @@
 #' Adjust for batch effects using an empirical Bayes framework in single-cell RNA-seq raw counts
 #' 
-#' ComBat_seq is an extension to the ComBat method using Negative Binomial model.
+#' NbZnComBat is an extension to the ComBat method using Negative Binomial model, with additional twists to address zero counts.
 #' 
 #' @param counts Raw count matrix from genomic studies (dimensions gene x sample) 
 #' @param batch Batch covariate (only one batch allowed)
@@ -15,8 +15,8 @@
 #' @export
 #' 
 
-ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
-  ########  Handle sparsity
+NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
+  ########  Handle zeros
   
   
   
