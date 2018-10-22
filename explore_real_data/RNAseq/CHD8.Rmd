@@ -495,10 +495,6 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 ```
 
 
-## Summary
-
-+ There exists a certain level of batch effect in this dataset.
-
 
 ## Session info 
 
