@@ -15,15 +15,25 @@
 #' @export
 #' 
 
-NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
+NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.fracs.cutoff=0.8){  #, normalize="none"){
   ########  Handle zeros
-  
-  
+  if(any(cts==0) & (!zin.opt)){warnings("The count matrix contains zeros but zin.opt is not on. We recommend zero-inflated versions for this data.")}
+  if(zin.opt){
+    # Partition genes into zero-inflated ("zin") genes & non-zin genes
+    zin_genes <- search_zin_genes(cts, cut.off=zero.fracs.cutoff)   #range(rowSums(cts[zin_genes, ]==0)/ncol(cts))
+    non_zin_genes <- setdiff(1:nrow(cts), zin_genes)
+    
+    # # Impute 0s in non-zin genes (kNN imputation)
+    # library(DMwR)
+    # tmp <- cts[non_zin_genes, ]
+    # tmp[tmp==0] <- NA
+    # cts[non_zin_genes, ] <- t(knnImputation(t(tmp), k=min(5, ncol(cts))))
+  }
   
   
   ########  Preparation  ########  
   library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
-  dge_obj <- DGEList(counts=counts, group=group)
+  dge_obj <- DGEList(counts=cts, group=group)
   
   ## Prepare characteristics on batches
   batch <- as.factor(batch)
@@ -44,7 +54,7 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
     mod <- model.matrix(~group)
   }else{
     cat("Using null model in ComBat-seq.\n")
-    mod <- model.matrix(~1, data=as.data.frame(t(counts)))
+    mod <- model.matrix(~1, data=as.data.frame(t(cts)))
   }
   # combine
   design <- cbind(batchmod, mod)
@@ -65,8 +75,8 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   }
 
   ## Check for missing values in count matrix
-  NAs = any(is.na(counts))
-  if(NAs){cat(c('Found',sum(is.na(counts)),'Missing Data Values\n'),sep=' ')}
+  NAs = any(is.na(cts))
+  if(NAs){cat(c('Found',sum(is.na(cts)),'Missing Data Values\n'),sep=' ')}
 
   
   ########  Estimate gene-wise dispersions within each batch  ########
@@ -76,10 +86,10 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){ 
       # not enough residual degree of freedom
-      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
+      return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=NULL, subset=nrow(cts)))
       #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
     }else{
-      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(counts)))
+      return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(cts)))
     }
   })
   
@@ -89,19 +99,19 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[j] <= ncol(design)-ncol(batchmod)+1){
       # not enough residual degrees of freedom - use the common dispersion
-      # return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=NULL, 
+      # return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=NULL, 
       #                               dispersion=disp_common[j], prior.df=0))
-      return(rep(disp_common[j], nrow(counts)))
+      return(rep(disp_common[j], nrow(cts)))
       #as.matrix(design[batches_ind[[j]], (n_batch+1):ncol(design)]),
     }else{
-      return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
+      return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
                                     dispersion=disp_common[j], prior.df=0))
     }
   })
   names(genewise_disp_lst) <- paste0('batch', levels(batch))
   
   ## construct dispersion matrix
-  phi_matrix <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
+  phi_matrix <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
   for(k in 1:n_batch){
     phi_matrix[, batches_ind[[k]]] <- vec2mat(genewise_disp_lst[[k]], n_batches[k]) #matrix(rep(genewise_disp_lst[[k]], n_batches[k]), ncol=n_batches[k])
   }#round(apply(phi_matrix,2,mean),2)
@@ -110,8 +120,8 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   ########  Estimate parameters from NB GLM  ########
   glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
-  new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
-    vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
+  new_offset <- t(vec2mat(getOffset(dge_obj), nrow(cts))) +   # original offset - sample (library) size
+    vec2mat(alpha_g, ncol(cts))  # new offset - gene background expression
   # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
   glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
                            offset=new_offset, prior.count=0) 
@@ -123,12 +133,17 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   #if(!identical(colnames(gamma_hat), colnames(phi_hat))){stop("gamma and phi don't match!")}
   #tmp = mu_hat - exp(glm_f2$coefficients %*% t(design) + new_offset); tmp[1:6,1:6]; mean(tmp)
   
+  ## handle zeros
+  if(zin.opt){
+    gamma_hat[zin_genes, ] <- 0
+  }
+  
   
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
   monte_carlo_res <- lapply(1:n_batch, function(ii){
-    monte_carlo_int_NB(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
+    monte_carlo_int_NB(dat=cts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
                        gamma=gamma_hat[, ii], phi=phi_hat[, ii])
-    #dat=counts[, batches_ind[[ii]]]; mu=mu_hat[, batches_ind[[ii]]]; gamma=gamma_hat[, ii]; phi=phi_hat[, ii]
+    #dat=cts[, batches_ind[[ii]]]; mu=mu_hat[, batches_ind[[ii]]]; gamma=gamma_hat[, ii]; phi=phi_hat[, ii]
   })
   names(monte_carlo_res) <- paste0('batch', levels(batch))
   
@@ -139,27 +154,27 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   
   
   ########  Obtain adjusted batch-free distribution  ########
-  mu_star <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
+  mu_star <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
   for(jj in 1:n_batch){
     mu_star[, batches_ind[[jj]]] <- exp(log(mu_hat[, batches_ind[[jj]]])-
                                           vec2mat(gamma_star_mat[, jj], n_batches[jj])#-
-                                          #t(vec2mat(getOffset(dge_obj)[batches_ind[[jj]]], nrow(counts)))
+                                          #t(vec2mat(getOffset(dge_obj)[batches_ind[[jj]]], nrow(cts)))
     )
   }
   phi_star <- rowMeans(phi_star_mat)
   
   
   ########  Adjust the data  ########  
-  adjust_counts <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
+  adjust_cts <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
   for(kk in 1:n_batch){
-    counts_sub <- counts[, batches_ind[[kk]]]
+    cts_sub <- cts[, batches_ind[[kk]]]
     old_mu <- mu_hat[, batches_ind[[kk]]]
     old_phi <- phi_hat[, kk]
     new_mu <- mu_star[, batches_ind[[kk]]]
     new_phi <- phi_star
-    adjust_counts[, batches_ind[[kk]]] <- match_quantiles(counts_sub=counts_sub, 
-                                                          old_mu=old_mu, old_phi=old_phi, 
-                                                          new_mu=new_mu, new_phi=new_phi)
+    adjust_cts[, batches_ind[[kk]]] <- match_quantiles(counts_sub=cts_sub, 
+                                                       old_mu=old_mu, old_phi=old_phi, 
+                                                       new_mu=new_mu, new_phi=new_phi)
   }
   
   # ## normalize for library size?
@@ -167,7 +182,7 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   #   if(!(normalize %in% c("TMM","RLE","upperquartile"))){
   #     stop("Normalization method not supported")
   #   }else{
-  #     adj_dge_obj <- DGEList(counts=adjust_counts, group=group, lib.size=dge_obj$samples$lib.size)
+  #     adj_dge_obj <- DGEList(counts=adjust_cts, group=group, lib.size=dge_obj$samples$lib.size)
   #     adj_dge_obj <- calcNormFactors(adj_dge_obj, method=normalize)
   #     for(ii in 1:ncol(adjust_counts)){
   #       adjust_counts[, ii] <- round(adjust_counts[, ii] * adj_dge_obj$samples$norm.factors[ii], 0)
@@ -176,7 +191,7 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   # }
   
   ## Print out some intermediate results
-  if(nrow(counts)>=2000){
+  if(nrow(cts)>=2000){
     # design matrix
     cat("\n########  Design matrix  ########\n")
     cat("Partial design matrix:\n"); print(head(design))
@@ -207,6 +222,6 @@ NbZnCombat <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
     print(mean(phi_star))
   }
   
-  dimnames(adjust_counts) <- dimnames(counts)
-  return(adjust_counts)
+  dimnames(adjust_cts) <- dimnames(cts)
+  return(adjust_cts)
 }

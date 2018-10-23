@@ -12,7 +12,7 @@ bibliography: refs.bib
 
 ## Introduction
 
-ReCount is a public database of pre-processed RNA-seq gene count data [@collado2017reproducible]. The SVAseq paper [@leek2014svaseq] used 2 studies with gene measurements in two separate Hapmap populations, and looked for differentially expressed genes between genders in the two studies combined. Exploration of the same ReCount data used in SVAseq are summarized in a separate file (svaseq_recount).
+ReCount is a public database of pre-processed RNA-seq gene count data [@collado2017reproducible]. The SVAseq paper [@leek2014svaseq] used 2 studies with gene measurements in two separate Hapmap populations, and looked for differentially expressed genes between genders in the two studies combined. However, the sample information for the Hapmap dataset is no longer available as NCBI took down Hapmap (https://www.ncbi.nlm.nih.gov/variation/news/NCBI_retiring_HapMap/).
 
 Here, I searched the ReCount database with the keyword "batch", and found a few datasets with abstracts containing this word (which means that the dataset potentially has batch effect). One of them is SRP047233 [@sugathan2014chd8]. This dataset aims to investigate the impact of decreased CHD8 expression on the expression of genes in downstream (CHD8-regulated) network. Truncating mutation of CHD8 is an important risk factor for autism spectrum disorder (ASD).
 
@@ -125,6 +125,13 @@ The figure below shows distribution of percentages of zero counts for the remain
 n_zeros_in_genes <- apply(assay(rse_gene, "counts"), 1, function(x){length(which(x==0))})
 percent_zeros_in_genes <- n_zeros_in_genes / ncol(rse_gene)
 percent_zeros_df <- data.frame(genes=rownames(rse_gene), value=percent_zeros_in_genes)
+
+binned_cts <- hist(percent_zeros_in_genes, breaks=10, plot=FALSE)$counts 
+binned_proportions <- binned_cts / sum(binned_cts)
+names(binned_proportions) <- paste0("<", percent(seq(from=0.1, to=1, by=0.1)))  
+cat("######  Proportion of genes with X% zeros across samples  #######\n")
+print(round(binned_proportions,3))
+
 ggplot(percent_zeros_df, aes(0, value)) + 
       geom_violin() +
       geom_boxplot(aes(0.7, value), width=0.15) +
@@ -132,6 +139,9 @@ ggplot(percent_zeros_df, aes(0, value)) +
       annotate(geom="text", label=percent(median(percent_zeros_df$value)), x=0.85, y=median(percent_zeros_df$value)) +
       labs(y="% Zeros", title="Proportion of zeros across samples for the remaining genes") +
       theme(axis.title.y=element_blank())#, axis.text.y=element_blank())
+```
+
+```{r, echo=FALSE}
 rm(n_zeros_in_genes, percent_zeros_in_genes, percent_zeros_df)
 ```
 

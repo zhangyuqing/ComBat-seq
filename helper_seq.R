@@ -37,3 +37,27 @@ match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
   }
   return(new_counts_sub)
 }
+
+
+
+#### Functions to address zeros
+#cut_off=zero.fracs.cutoff
+search_zin_genes <- function(cts, cut.off=NULL){
+  # calculate observed zero fractions for each gene
+  obs_zeros <- rowSums(cts==0)
+  obs_zeros_frac <- obs_zeros / ncol(cts)
+  
+  # look for genes with zero fractions larger than the cut_off threshold 
+  if(is.null(cut.off)){
+    # cut off not specified, look for a "turning point" in observed zero fractions
+    
+  }else{
+    # cut off specified, use the user-defined cut-off value
+    zin_genes <- as.numeric(which(obs_zeros_frac > cut.off))
+  }
+  
+  return(zin_genes)
+}
+
+
+
