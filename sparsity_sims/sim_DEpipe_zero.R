@@ -1,6 +1,8 @@
 rm(list=ls())
-new_wd <- "~/Google Drive/ComBat_seq/DE_analysis_tmp/"  #"~/yuqingz/ComBat_seq/DE_analysis_ZIN/"
-script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"  #".."
+# new_wd <- "~/Documents/ComBat_seq/DE_analysis_tmp/"  
+# script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"  
+new_wd <- "~/yuqingz/ComBat_seq/DE_analysis_ZIN/"
+script_dir <- ".."
 setwd(new_wd)
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 source(file.path(script_dir, "NbZnCombat.R")); source(file.path(script_dir, "helper_seq.R"))   # load NbZnCombat
@@ -18,24 +20,22 @@ size_2 <- as.numeric(command_args[5])   # 1/dispersion in batch 2 ("Arnold")
 N_total_sample <- as.numeric(command_args[6])  #20  #total number of samples in the study
 balanced <- as.logical(command_args[7])  #TRUE  #logical, if TRUE balanced design
 coverage <- as.numeric(command_args[8])  #20  
-#factor_exam="FC"; bio_fold=2; batch_fold=2; size_1=50; size_2=10; N_total_sample=20; balanced=TRUE; coverage=5
+#factor_exam="FC"; bio_fold=2; batch_fold=2; size_1=1/0.1; size_2=1/0.01; N_total_sample=20; balanced=FALSE; coverage=5
 
 prop_gene_partition <- as.numeric(c("0.6", "0.25", "0.15"))  #as.numeric(command_args[9:11])
 if(sum(prop_gene_partition)!=1){stop("Wrong gene partition probability input: must sum to 1!")}
-# this means that: 
-# 60% genes - no zeros, 
-# 25% genes - random zero fraction (ranging 0%-100%)
+# this means that: 60% genes - no zeros; 25% genes - random zero fraction (ranging 0%-100%), 
 # 15% genes - "zin" genes, zero fraction > 80%
 zero.fracs.cutoff <- 0.5   #as.numeric(command_args[12])
 
-iterations <- 100 #5  #number of simulations to run
+iterations <- 20 #100 #5  #number of simulations to run
 alpha <- 0.05
 exp_name <- paste0("sim", factor_exam, "_bio", bio_fold, "_batch", batch_fold, "_sizes", size_1, '_', size_2,
                    "_N", N_total_sample, ifelse(balanced, "_B", "_U"), "_depth", coverage)
 exp_name <- gsub('.', '', exp_name, fixed=TRUE)
 
 # FASTA annotation
-read_length <- 100
+read_length <- 5
 fasta_file <- system.file('extdata', 'chr22.fa', package='polyester')
 fasta <- readDNAStringSet(fasta_file)
 # subset the FASTA file to first N_genes transcripts
@@ -72,7 +72,7 @@ size_mat <- matrix(rep(c(size_1, size_1, size_2, size_2), length(fasta)),
 p_zeros_list <- list()
 for(iter in 1:iterations){
   cat(paste("\nSimulation", iter, '\n'))
-
+  
   ####  Simulate datasets
   # use polyester to simulate dataset
   if(dir.exists(exp_name)){unlink(exp_name, recursive=TRUE)}
@@ -93,17 +93,27 @@ for(iter in 1:iterations){
   counts_matrix <- zin_res$counts
   p_zeros_list[[iter]] <- zin_res$p_zero_seq
   
-  # remove genes that are flat to all-zero due to inflation
-  new_allzero_genes <- rownames(counts_matrix)[apply(counts_matrix, 1, function(x){all(x==0)})]
-  if(!all(counts_matrix[new_allzero_genes, ]==0)){stop("Error in looking for new all zero genes!")}
+  # # remove genes that are flattened to all-zero due to inflation
+  # new_allzero_genes <- rownames(counts_matrix)[apply(counts_matrix, 1, function(x){all(x==0)})]
+  # if(!all(counts_matrix[new_allzero_genes, ]==0)){stop("Error in looking for new all zero genes!")}
+  # 
+  # counts_matrix <- counts_matrix[setdiff(rownames(counts_matrix), new_allzero_genes), ]
+  # de_ground_truth <- setdiff(de_ground_truth, new_allzero_genes)
   
-  counts_matrix <- counts_matrix[setdiff(rownames(counts_matrix), new_allzero_genes), ]
-  de_ground_truth <- setdiff(de_ground_truth, new_allzero_genes)
+  # (more strictly) remove genes with only zero values in any batch, due to inflation
+  keep1 <- apply(counts_matrix[, batch==1], 1, function(x){!all(x==0)})
+  keep2 <- apply(counts_matrix[, batch==2], 1, function(x){!all(x==0)})
+  keep <- keep1 & keep2
+  keep_genes <- rownames(counts_matrix)[keep]
+  counts_matrix <- counts_matrix[keep_genes, ]
+  de_ground_truth <- intersect(de_ground_truth, keep_genes)
+  # sanity check
+  if(sum(apply(counts_matrix, 1, function(x){all(x==0)}))!=0){stop("Error in removing zero genes!")}
+  
   N_DE <- length(de_ground_truth)
   N_nonDE <- nrow(counts_matrix) - N_DE
-  
-  
     
+  
   ####  DE analysis (with edgeR)
   # On original counts with batch effect
   y1 <- DGEList(counts=counts_matrix)
@@ -194,7 +204,7 @@ for(iter in 1:iterations){
   # colnames(DE_res) <- c("RawCounts.edgeR", "OneStep.edgeR", "ComBat.lm",
   #                      "ComBat.voom", "NbZnCombat.edgeR", "NbZnCombat.voom")
   DE_res <- matrix(c(fpr1, tpr1, fpr2, tpr2, fpr3, tpr3, fpr5, tpr5), nrow=2)
-  colnames(DE_res) <- c("RawCounts", "OneStep", "ComBat.lm", "NbZnCombat")
+  colnames(DE_res) <- c("Raw.counts", "One.step", "ComBat.lm", "NbZnCombat")
   rownames(DE_res) <- c("fpr", "tpr")
   DE_res <- as.data.frame(DE_res)
   

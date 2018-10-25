@@ -1,0 +1,15 @@
+---
+title: "Sparsity simulation for bulk RNA-seq dataset"
+author: Yuqing Zhang
+date: "`r Sys.Date()`"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+---
+
+## Modification to address zero-inflated data
+
+
+
+

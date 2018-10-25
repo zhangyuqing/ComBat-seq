@@ -27,7 +27,7 @@ match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
   for(a in 1:nrow(counts_sub)){
     for(b in 1:ncol(counts_sub)){
       tmp_p <- pnbinom(counts_sub[a, b], mu=old_mu[a, b], size=1/old_phi[a])
-      if(tmp_p==1){
+      if(abs(tmp_p-1)<1e-6){
         new_counts_sub[a,b] <- counts_sub[a, b]  
         # for outlier count, if p==1, will return Inf values -> use original count instead
       }else{
@@ -59,5 +59,20 @@ search_zin_genes <- function(cts, cut.off=NULL){
   return(zin_genes)
 }
 
+## The following function takes the mean and CV estimates from DESCEND, and calculate dispersion estimates for each gene.
+compute_disp <- function(mean_est, cv_est, zin.opt, zin_genes){  
+  disp_est <- rep(NA, length(mean_est))
+  
+  mean_na_ind <- is.na(mean_est)
+  cv_na_ind <- is.na(cv_est)
+  est_ind <- (!mean_na_ind) & (!cv_na_ind)
+  
+  disp_est[est_ind] <- meanCV2disp(m=mean_est[est_ind], cv=cv_est[est_ind])
+  
+  return(disp_est)
+}
 
-
+meanCV2disp <- function(m, cv){
+  disp <- cv^2 - 1/m
+  return(disp)
+}

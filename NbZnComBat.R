@@ -15,19 +15,21 @@
 #' @export
 #' 
 
-NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.fracs.cutoff=0.8){  #, normalize="none"){
+NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.fracs.cutoff=NULL){  #, normalize="none"){
   ########  Handle zeros
   if(any(cts==0) & (!zin.opt)){warnings("The count matrix contains zeros but zin.opt is not on. We recommend zero-inflated versions for this data.")}
   if(zin.opt){
     # Partition genes into zero-inflated ("zin") genes & non-zin genes
-    zin_genes <- search_zin_genes(cts, cut.off=zero.fracs.cutoff)   #range(rowSums(cts[zin_genes, ]==0)/ncol(cts))
-    non_zin_genes <- setdiff(1:nrow(cts), zin_genes)
+    zin_genes <- search_zin_genes(cts, cut.off=zero.fracs.cutoff)    #range(rowSums(cts[zin_genes, ]==0)/ncol(cts))
+    non_zin_genes <- setdiff(1:nrow(cts), zin_genes)    #range(rowSums(cts[non_zin_genes, ]==0)/ncol(cts))
     
     # # Impute 0s in non-zin genes (kNN imputation)
     # library(DMwR)
     # tmp <- cts[non_zin_genes, ]
     # tmp[tmp==0] <- NA
     # cts[non_zin_genes, ] <- t(knnImputation(t(tmp), k=min(5, ncol(cts))))
+  }else{
+    zin_genes <- non_zin_genes <- NULL
   }
   
   
@@ -80,11 +82,12 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
 
   
   ########  Estimate gene-wise dispersions within each batch  ########
-  ## Estimate common dispersion within each batch as an initial value
+  cat("Estimating dispersions for each batch.\n")
+  # Estimate common dispersion within each batch as an initial value
   disp_common <- sapply(1:n_batch, function(i){
     if(n_batches[i]==1){
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
-    }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){ 
+    }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){
       # not enough residual degree of freedom
       return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=NULL, subset=nrow(cts)))
       #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
@@ -92,23 +95,43 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
       return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(cts)))
     }
   })
-  
-  ## Estimate gene-wise dispersion within each batch 
+
+  ## Estimate gene-wise dispersion within each batch
   genewise_disp_lst <- lapply(1:n_batch, function(j){
     if(n_batches[j]==1){
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[j] <= ncol(design)-ncol(batchmod)+1){
       # not enough residual degrees of freedom - use the common dispersion
-      # return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=NULL, 
+      # return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=NULL,
       #                               dispersion=disp_common[j], prior.df=0))
       return(rep(disp_common[j], nrow(cts)))
       #as.matrix(design[batches_ind[[j]], (n_batch+1):ncol(design)]),
     }else{
-      return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
+      return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ],
                                     dispersion=disp_common[j], prior.df=0))
     }
   })
   names(genewise_disp_lst) <- paste0('batch', levels(batch))
+
+  # library(descend)
+  # genewise_disp_lst <- lapply(1:n_batch, function(j){
+  #   cts_batch <- cts[, batches_ind[[j]]]
+  #   group_batch <- as.numeric(as.character(group[batches_ind[[j]]]))
+  #   batch_ctrl <- DESCEND.control(max.sparse=c((ncol(cts_batch)-2)/ncol(cts_batch), 2))  
+  #   #(max fraction of 0s, min number of non-zero counts)
+  #   descend_res <- try(runDescend(cts_batch, Z=group_batch, Z0=group_batch, family="Poisson",
+  #                                 control=batch_ctrl, show.message=FALSE, n.cores=3))
+  #   batch_disp_estimates <- try(getEstimates(descend_res))
+  #   if(class(batch_disp_estimates)=="try-error"){
+  #     stop("Too sparse data!!")
+  #   }else{
+  #     # use mean and cv to calculate dispersion
+  #     mean_est <- batch_disp_estimates$Mean[, 1]
+  #     cv_est <- batch_disp_estimates$CV[, 1]
+  #     return(compute_disp(mean_est=mean_est, cv_est=cv_est, zin.opt=zin.opt, zin_genes=zin_genes)) 
+  #   }
+  # })
+  # names(genewise_disp_lst) <- paste0('batch', levels(batch))
   
   ## construct dispersion matrix
   phi_matrix <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
@@ -126,16 +149,16 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
   glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
                            offset=new_offset, prior.count=0) 
   
-  #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
   gamma_hat <- glm_f2$coefficients[, 1:n_batch]
   mu_hat <- glm_f2$fitted.values
   phi_hat <- do.call(cbind, genewise_disp_lst)
   #if(!identical(colnames(gamma_hat), colnames(phi_hat))){stop("gamma and phi don't match!")}
   #tmp = mu_hat - exp(glm_f2$coefficients %*% t(design) + new_offset); tmp[1:6,1:6]; mean(tmp)
   
-  ## handle zeros
+  # handle zeros
   if(zin.opt){
     gamma_hat[zin_genes, ] <- 0
+    phi_hat[zin_genes, ] <- t(vec2mat(colMedians(phi_hat[non_zin_genes, ]), length(zin_genes)))
   }
   
   
@@ -156,16 +179,13 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
   ########  Obtain adjusted batch-free distribution  ########
   mu_star <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
   for(jj in 1:n_batch){
-    mu_star[, batches_ind[[jj]]] <- exp(log(mu_hat[, batches_ind[[jj]]])-
-                                          vec2mat(gamma_star_mat[, jj], n_batches[jj])#-
-                                          #t(vec2mat(getOffset(dge_obj)[batches_ind[[jj]]], nrow(cts)))
-    )
+    mu_star[, batches_ind[[jj]]] <- mu_hat[, batches_ind[[jj]]] / exp(vec2mat(gamma_star_mat[, jj], n_batches[jj]))
   }
   phi_star <- rowMeans(phi_star_mat)
   
   
   ########  Adjust the data  ########  
-  adjust_cts <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts))
+  adjust_cts <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts), dimnames=dimnames(cts))
   for(kk in 1:n_batch){
     cts_sub <- cts[, batches_ind[[kk]]]
     old_mu <- mu_hat[, batches_ind[[kk]]]
@@ -177,51 +197,5 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
                                                        new_mu=new_mu, new_phi=new_phi)
   }
   
-  # ## normalize for library size?
-  # if(normalize!="none"){
-  #   if(!(normalize %in% c("TMM","RLE","upperquartile"))){
-  #     stop("Normalization method not supported")
-  #   }else{
-  #     adj_dge_obj <- DGEList(counts=adjust_cts, group=group, lib.size=dge_obj$samples$lib.size)
-  #     adj_dge_obj <- calcNormFactors(adj_dge_obj, method=normalize)
-  #     for(ii in 1:ncol(adjust_counts)){
-  #       adjust_counts[, ii] <- round(adjust_counts[, ii] * adj_dge_obj$samples$norm.factors[ii], 0)
-  #     }
-  #   }
-  # }
-  
-  ## Print out some intermediate results
-  if(nrow(cts)>=2000){
-    # design matrix
-    cat("\n########  Design matrix  ########\n")
-    cat("Partial design matrix:\n"); print(head(design))
-    # dispersion
-    cat("\n\n########  Dispersion  ########\n")
-    cat("Estimated common dispersion:\n"); print(round(disp_common,3))
-    cat("\nAverage estimated gene-wise dispersion:\n"); print(round(sapply(genewise_disp_lst, mean), 3))
-    # GLM model
-    cat("\n\n########  GLM model coefs  ########\n")
-    cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); cat('...\n'); print(tail(glm_f$coefficients))
-    cat("\nSanity check: estimated batch mean in gene group 1:\n"); print(exp(colMeans(glm_f$coefficients[1:1000,1:n_batch]))*mean(colSums(counts)))
-    cat("\nAverage background count alpha:\n"); print(mean(alpha_g)); print(exp(mean(alpha_g))*mean(colSums(counts)))
-    cat("\nCoefficients (model 2):\n"); print(head(glm_f2$coefficients)); cat('...\n'); print(tail(glm_f2$coefficients))
-    # Posterior estimates of batch parameters
-    cat("\n\n########  Batch effect estimates  ########\n")
-    cat("Prior average exp(gamma) in gene group 1:\n")
-    cat("NOTE: adjusted mean = original mean / exp(gamma) \n")
-    print(exp(colMeans(gamma_hat[1:1000,])))
-    cat("\nPosterior average exp(gamma) in gene group 1:\n") 
-    print(exp(colMeans(gamma_star_mat[1:1000,])))
-    cat("\nPrior average dispersion:\n")
-    print(colMeans(phi_hat))
-    cat("\nPosterior average dispersion:\n")
-    print(colMeans(phi_star_mat))
-    cat("\nBatch-free mean mu:\n")
-    print(mean(mu_star[1001:2000,batch=="A"])); print(mean(mu_star[1001:2000,batch=="B"]))
-    cat("\nBatch-free dispersion phi:\n")
-    print(mean(phi_star))
-  }
-  
-  dimnames(adjust_cts) <- dimnames(cts)
   return(adjust_cts)
 }
