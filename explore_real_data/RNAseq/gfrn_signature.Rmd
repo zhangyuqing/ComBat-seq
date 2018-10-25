@@ -12,14 +12,14 @@ bibliography: refs.bib
 
 ## Introduction
 
-The growth factor receptor network (GFRN) contributes to breast cancer progression and drug response. This RNA-Seq dataset [@rahman2017activity] is designed to develop gene signatures for several GFRN pathways: AKT, BAD, HER2, IGF1R, RAF1, KRAS, and EGFR. We used recombinant adenoviruses to express these genes in case samples and produce green fluorescent protein (GFP) in control samples, using replicates of human mammary epithelial cells (HMECs). RNA-Seq data are collected from these HMECs overexpressing GFRN genes and GFP controls. 
+The growth factor receptor network (GFRN) contributes to breast cancer progression and drug response. This RNA-Seq dataset [@rahman2017activity] is designed to develop gene signatures for several GFRN pathways: AKT, BAD, HER2, IGF1R, RAF1, KRAS, and EGFR. The study used recombinant adenoviruses to express these genes in case samples and produce green fluorescent protein (GFP) in control samples, using replicates of human mammary epithelial cells (HMECs). RNA-Seq data are collected from these HMECs overexpressing GFRN genes and GFP controls. 
 
 ### Overall design
 
 The dataset contains 3 batches, with a total of 89 samples:
 
 + Batch 1 ([GSE83083](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE83083)): 6 replicate samples of each for AKT, BAD, IGF1R, and RAF1, 5 replicates for HER2, and 12 replicates for GFP controls
-+ Batch 2 ([GSE83083](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE83083)): 9 replicates of each for 3 types of KRAS mutants and GFP control (GEO accession GSE83083)
++ Batch 2 ([GSE83083](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE83083)): 9 replicates of each for 3 types of KRAS mutants and GFP control
 + Batch 3 ([GSE59765](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE59765)): 6 replicates of each for EGFR and its corresponding controls  
 
 
@@ -45,7 +45,7 @@ group_num <- rep(0, ncol(cts_mat))
 cond_names <- levels(group)[c(1:3,7:nlevels(group))]
 for(i in 1:length(cond_names)){group_num[grep(paste0("^",cond_names[i]), group)] <- i}
 colData(sigdata)$condition_bi <- as.factor(group_num)
-colData(sigdata)$batch <- as.factor(colData(sigdata)$batch)
+colData(sigdata)$batch <- as.factor(batch)
 ```
 
 A few basic statistics of the dataset:
@@ -169,13 +169,13 @@ colnames(meta_info)[2] <- "cond"
 tmp <- merge(x=ddata$labels, y=meta_info, by.x="label", by.y="sample")
 
 pd_batch <- ggplot(segment(ddata)) + 
-  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) + 
   coord_flip() + scale_y_reverse() +
   #scale_color_manual(values=c('#E69F00', '#56B4E9')) +
   geom_text(data=tmp, aes(label=as.character(tmp$label), x=x, y=-10, colour=batch)) +
   labs(x="", y="", title="Clustering: samples colored by Batch")
 pd_cond <- ggplot(segment(ddata)) + 
-  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) + 
   coord_flip() + scale_y_reverse() +
   geom_text(data=tmp, aes(label=as.character(tmp$label), x=x, y=-10, colour=cond)) +
   labs(x="", y="", title="Clustering: samples colored by Condition")
@@ -244,9 +244,9 @@ void <- mapply(function(dat, dat_name, meta_info){
     curr_df <- merge(x=curr_df, y=meta_info, by.x="samples", by.y="sample")
     
     # scatter plot for i-th gene
-    p_scatter <- ggplot(curr_df, aes(x=samples, y=value, color=batch, shape=cond)) +
+    p_scatter <- ggplot(curr_df, aes(x=samples, y=value, color=cond, shape=batch)) +
       geom_point() +
-      labs(x="Samples", y=dat_name, title=rownames(dat)[i]) +
+      labs(x="Samples", y=dat_name, title=paste0("gene", chosen_id[i])) +
       theme(axis.text.x=element_blank())
     
     # violin plot for i-th gene
@@ -305,7 +305,7 @@ To rule out the impact of batch effect, we limit our DE analysis with regard to 
 
 ```{r, results="hide"}
 ####  Differential genes relative to biological condition 
-####  (within batch 1 / batch specified by 'test_batch')
+####  (within batch specified by 'test_batch')
 test_batch <- 2
 counts_batch <- cts_mat[, batch==test_batch]
 cond_batch <- group_num[batch==test_batch]
@@ -318,11 +318,11 @@ fit <- glmQLFit(y, design)
 qlf <- glmQLFTest(fit, coef=2)
 de_res <- topTags(qlf, n=nrow(sigdata))
  
-up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes (descending order in terms of p value)
+up_genes <- which(de_res$table$logFC >= 0)  # all up-regulated genes (descending order in terms of p value)
 head_up_genes <- head(up_genes, n=50)  # top-50 significant up-regulated genes
 tail_up_genes <- tail(up_genes, n=50)  # 50 least significant up-regulated genes
 
-down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
+down_genes <- which(de_res$table$logFC < 0)  # all down-regulated genes
 head_down_genes <- head(down_genes, n=50)  # top-50 significant down-regulated genes
 tail_down_genes <- tail(down_genes, n=50)  # 50 least significant down-regulated genes
 ```
@@ -331,13 +331,13 @@ tail_down_genes <- tail(down_genes, n=50)  # 50 least significant down-regulated
 # changes in terms of mean
 cat("######  Changes in terms of average gene counts  ######\n")
 mean_cts_mat <- matrix(NA, nrow=2, ncol=3, 
-                       dimnames=list(c("Controls", "Cases"), c("top50 up", "top50 down", "100 least DE")))
-mean_cts_mat["Controls", "top50 up"] <- mean(counts_batch[ , cond_batch==0])
-mean_cts_mat["Cases", "top50 up"] <- mean(counts_batch[head_up_genes, cond_batch==1])
-mean_cts_mat["Controls", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==0])
-mean_cts_mat["Cases", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==1])
-mean_cts_mat["Controls", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==0])
-mean_cts_mat["Cases", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==1])
+                       dimnames=list(c("Control", "EGFR"), c("top50 up", "top50 down", "100 least DE")))
+mean_cts_mat["Control", "top50 up"] <- mean(counts_batch[head_up_genes, cond_batch==0])
+mean_cts_mat["EGFR", "top50 up"] <- mean(counts_batch[head_up_genes, cond_batch==3])
+mean_cts_mat["Control", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==0])
+mean_cts_mat["EGFR", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==3])
+mean_cts_mat["Control", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==0])
+mean_cts_mat["EGFR", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==3])
 print(round(mean_cts_mat,3))
 
 # changes in terms of (log) fold change
@@ -381,14 +381,14 @@ rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes,
 
 #### Change WRT batch
 
-We are also interested to see how the average (mean) gene counts change across batches (i.e. **degree of mean batch effect**). To explore this mean batch effect, we perform DE with regard to the batch variable. To rule out the impact of biological condition, we perform this analysis within **control** samples only. Note that this DE is not true DE - it's testing if there is a significant mean difference between two batches. Some genes will not be different in mean, while some will. Which means that batch doesn't affect all genes in the same way.
+We are also interested to see how the average (mean) gene counts change across batches (i.e. **degree of mean batch effect**). To explore this mean batch effect, we perform DE with regard to the batch variable. To rule out the impact of biological condition, we perform this analysis within **control** samples only. Since from the PCA plot, Batch 2 separates from the other two batches more, we compare **Batch 1 and 2** in this case.
 
 ```{r, results="hide"}
 ####  Differential genes relative to batch 
 ####  (within condition 0 / condition specified by 'test_cond')
 test_cond <- 0
-counts_cond <- cts_mat[, group_num==test_cond]
-batch_cond <- batch[group_num==test_cond]
+counts_cond <- cts_mat[, (group_num==test_cond) & (batch!=3)]
+batch_cond <- batch[(group_num==test_cond) & (batch!=3)]
 
 y <- DGEList(counts=counts_cond, group=as.factor(batch_cond))
 y <- calcNormFactors(y, method="TMM")
@@ -398,11 +398,11 @@ fit <- glmQLFit(y, design)
 qlf <- glmQLFTest(fit, coef=2)
 de_res <- topTags(qlf, n=nrow(sigdata))
 
-up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes
+up_genes <- which(de_res$table$logFC >= 0)  # all up-regulated genes
 head_up_genes <- head(up_genes, n=50)  # top-50 up-regulated genes
 tail_up_genes <- tail(up_genes, n=50)  # 50 least up-regulated genes
 
-down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
+down_genes <- which(de_res$table$logFC < 0)  # all down-regulated genes
 head_down_genes <- head(down_genes, n=50)  # top-50 down-regulated genes
 tail_down_genes <- tail(down_genes, n=50)  # 50 least down-regulated genes
 ```
@@ -455,7 +455,7 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
 
 ### Dispersion
 
-Aside from average gene counts, we are interested in comparing dispersions in the two batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
+Aside from average gene counts, we are interested in comparing dispersions in the batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
 
 ```{r, echo=FALSE}
 ####  Dispersion differences across batch 1 and 2
