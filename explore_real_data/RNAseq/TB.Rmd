@@ -1,0 +1,478 @@
+---
+title: "Exploration of real bulk RNA-seq datasets"
+subtitle: "TB datasets"
+author: Yuqing Zhang
+date: "`r Sys.Date()`"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+bibliography: refs.bib
+---
+
+## Introduction
+
+### Overall design
+
+### Download data & summarize basic info
+
+```{r, echo=FALSE, results='hide'}
+rm(list=ls())
+output_dir <- "~/Google Drive/ComBat_seq/real_data_example/RNAseq/TB"
+sapply(c("SummarizedExperiment", "DESeq2", "edgeR", "dendextend", "ggplot2", "reshape2", "gridExtra", "scales", "ggdendro"), 
+       require, character.only=TRUE)
+
+
+####  Load data
+rds_obj <- readRDS(file.path(output_dir, "combined.rds"))
+cts <- assays(rds_obj)$counts
+# batch indicator
+batch <- colData(rds_obj)$SequencingBatch
+# condition indicator
+group <- colData(rds_obj)$Label
+```
+
+After loading the data, we calculate a few basic statistics of the dataset.
+
+```{r, echo=FALSE}
+cat("######  Samples  #######\n")
+cat("- Total number of samples:\n")
+print(ncol(rds_obj))
+
+cat("\n- Number of samples in condition groups:\n")
+print(table(group))
+
+cat("\n- Number of samples in batches:\n")
+print(table(batch))
+cat("In each batch:")
+
+
+
+cat("\n\n######  Genes  #######\n")
+cat("- Total number of genes:\n")
+print(nrow(rds_obj))
+
+cat("\n- Number of genes with 0 counts:\n")
+gene_row_with_zeros <- apply(assay(rds_obj, "counts"), 1, function(x){any(x==0)})
+cat(c(sum(gene_row_with_zeros), percent(sum(gene_row_with_zeros)/nrow(rds_obj))))
+
+cat("\n\n- Number of genes with maximum 10 counts:\n")
+gene_row_low <- apply(assay(rds_obj, "counts"), 1, function(x){all(x<=10)})
+cat(c(sum(gene_row_low), percent(sum(gene_row_low)/nrow(rds_obj))))
+
+cat("\n\n- Number of genes with ONLY 0s:\n")
+gene_all_zeros <- apply(assay(rds_obj, "counts"), 1, function(x){all(x==0)})
+cat(c(sum(gene_all_zeros), percent(sum(gene_all_zeros)/nrow(rds_obj))))
+
+
+cat("\n\n\n######  Counts  #######\n")
+cat("- Range of count in whole dataset:\n")
+print(round(range(assay(rds_obj, "counts")), 3))
+
+cat("\n- Average count in whole dataset:\n")
+print(paste("Mean:", round(mean(assay(rds_obj, "counts")), 3)))
+print(paste("Median:", round(median(assay(rds_obj, "counts")), 3)))
+
+rm(gene_row_with_zeros, gene_row_low, gene_all_zeros)
+```
+
+We saw that there is no gene in this dataset that has only zero values across all samples. The figure below shows distribution of percentages of zero counts for the remaining genes (each data point represents a gene, i.e., how many zeros are there in each gene).
+
+```{r, echo=FALSE}
+n_zeros_in_genes <- apply(assay(rds_obj, "counts"), 1, function(x){length(which(x==0))})
+percent_zeros_in_genes <- n_zeros_in_genes / ncol(rds_obj)
+percent_zeros_df <- data.frame(genes=rownames(rds_obj), value=percent_zeros_in_genes)
+
+binned_cts <- hist(percent_zeros_in_genes, breaks=10, plot=FALSE)$counts 
+binned_proportions <- binned_cts / sum(binned_cts)
+names(binned_proportions) <- paste0("<", percent(seq(from=0.1, to=1, by=0.1)))  
+cat("######  Proportion of genes with X% zeros across samples  #######\n")
+print(round(binned_proportions,3))
+
+ggplot(percent_zeros_df, aes(0, value)) + 
+      geom_violin() +
+      geom_boxplot(aes(0.7, value), width=0.15) +
+      coord_flip() +
+      annotate(geom="text", label=percent(median(percent_zeros_df$value)), x=0.85, y=median(percent_zeros_df$value)) +
+      labs(y="% Zeros", title="Proportion of zeros across samples for the remaining genes") +
+      theme(axis.title.y=element_blank())#, axis.text.y=element_blank())
+```
+
+```{r, echo=FALSE}
+rm(n_zeros_in_genes, percent_zeros_in_genes, percent_zeros_df)
+```
+
+**Since the TB datasets contain multiple studies, the batch effect is really refering to technical effects in here. We limit comparison to Brazil datasets for simplicity**.
+
+```{r, echo=FALSE}
+
+```
+
+
+
+## Existence of batch effect {.tabset}
+
+We first visualize the data using PCA and hierarchical clustering, to see if there is any batch effect in the dataset. Based on these plots, I believe there exists a certain level of batch effect in the data, as samples cluster more by batch than by biological condition.
+
+### PCA
+
+```{r, echo=FALSE, fig.height=2, fig.width=5}
+pca_obj <- plotPCA(DESeqTransform(rds_obj), intgroup=c("SequencingBatch", "Label")) 
+p_batch <- ggplot(pca_obj$data, aes(x=PC1, y=PC2, color=SequencingBatch)) +
+  geom_point() + 
+  #scale_color_manual(values=c('#E69F00', '#56B4E9'))+
+  labs(x=sprintf("PC1: %s Variance", percent(pca_obj$plot_env$percentVar[1])),
+       y=sprintf("PC2: %s Variance", percent(pca_obj$plot_env$percentVar[2])),
+       title="PCA: samples colored by Batch")
+p_cond <- ggplot(pca_obj$data, aes(x=PC1, y=PC2, color=Label)) +
+  geom_point() + 
+  labs(x=sprintf("PC1: %s Variance", percent(pca_obj$plot_env$percentVar[1])),
+       y=sprintf("PC2: %s Variance", percent(pca_obj$plot_env$percentVar[2])),
+       title="PCA: samples colored by Condition")
+grid.arrange(p_batch, p_cond, ncol=2)
+```
+
+### Dendrograms
+
+```{r, echo=FALSE, fig.height=3, fig.width=5}
+counts_norm <- scale(t(assay(rds_obj,"counts")), center=TRUE, scale=TRUE)
+hc <- hclust(dist(counts_norm))
+dend <- as.dendrogram(hc)
+ddata <- dendro_data(dend, type="rectangle")
+
+meta_info <- data.frame(colData(rds_obj)[, c("batch", "condition_bi")], sample=colnames(rds_obj))
+colnames(meta_info)[2] <- "cond"
+tmp <- merge(x=ddata$labels, y=meta_info, by.x="label", by.y="sample")
+
+pd_batch <- ggplot(segment(ddata)) + 
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) + 
+  coord_flip() + scale_y_reverse() +
+  scale_color_manual(values=c('#E69F00', '#56B4E9')) +
+  geom_text(data=tmp, aes(label=sapply(as.character(tmp$label), function(s){substr(s,nchar(s)-2,nchar(s))}), 
+                          x=x, y=-10, colour=batch)) +
+  labs(x="", y="", title="Clustering: samples colored by Batch")
+pd_cond <- ggplot(segment(ddata)) + 
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) + 
+  coord_flip() + scale_y_reverse() +
+  geom_text(data=tmp, aes(label=sapply(as.character(tmp$label), function(s){substr(s,nchar(s)-2,nchar(s))}), 
+                          x=x, y=-10, colour=cond)) +
+  labs(x="", y="", title="Clustering: samples colored by Condition")
+grid.arrange(pd_batch, pd_cond, ncol=2)
+
+rm(counts_norm, ddata, dend, hc, p_batch, p_cond, pca_obj, pd_batch, pd_cond, tmp)
+```
+
+
+## Library size
+
+Next, we take a look at the observed library sizes of samples, and to see if there is a difference in library size across batches.
+
+```{r, echo=FALSE}
+###  Distribution of library size
+lib_sizes <- colSums(assay(rds_obj, "counts"))
+cat("Range of observed library sizes across samples:\n")
+print(scientific(range(lib_sizes)))
+```
+
+
+```{r, echo=FALSE, fig.height=2, fig.width=4}
+lib_sizes_df <- data.frame(lib_sizes=lib_sizes, batch=as.factor(batch))
+
+# overall sample library sizes
+plib1 <- ggplot(lib_sizes_df, aes(x=lib_sizes)) + 
+  geom_histogram(bins=round(ncol(rds_obj)/5)) +
+  geom_vline(aes(xintercept=mean(lib_sizes)), color="red", linetype="dashed", size=1) +
+  annotate(geom="text", x=mean(lib_sizes), y=max(hist(lib_sizes, plot=FALSE)$counts)+1, 
+           label=scientific(mean(lib_sizes)), color="red") +
+  labs(x="Library sizes in samples", y="Number of samples", 
+       title="Distribution of observed library sizes") 
+
+# boxplot comparing distribution of library size across batches
+plib2 <- ggplot(lib_sizes_df, aes(x=batch, y=lib_sizes, fill=batch)) + 
+  geom_boxplot() +
+  labs(x="", y="Library sizes", title="Compare library sizes across batch") 
+
+grid.arrange(plib1, plib2, ncol=2)
+
+rm(plib1, plib2)
+```
+
+
+## Gene expression distribution
+
+Our next step is to interrogate the gene expression distributions. 
+
+We first simply plot the counts, CPM, and log2CPM of 20 randomly chosen genes in the dataset. These figures are stored under directory specified by output_dir.  
+
+```{r, echo=FALSE, results='hide'}
+if(!dir.exists(file.path(output_dir, "randGplots"))){dir.create(file.path(output_dir, "randGplots"))}
+set.seed(123)
+N_sel <- 20
+chosen_id <- sample(1:nrow(rds_obj), N_sel, replace=FALSE)
+
+cts_subset <- assay(rds_obj, "counts")[chosen_id, ]
+cpm_subset <- cpm(assay(rds_obj, "counts"), log=FALSE)[chosen_id, ]
+logCPM_subset <- cpm(assay(rds_obj, "counts"), log=TRUE)[chosen_id, ]
+data_lst <- list(Counts=cts_subset, CPM=cpm_subset, log2CPM=logCPM_subset)
+
+void <- mapply(function(dat, dat_name, meta_info){
+  for(i in 1:nrow(dat)){
+    # prepare data frame
+    curr_df <- data.frame(samples=colnames(dat), value=dat[i, ])
+    curr_df <- merge(x=curr_df, y=meta_info, by.x="samples", by.y="sample")
+    
+    # scatter plot for i-th gene
+    p_scatter <- ggplot(curr_df, aes(x=samples, y=value, color=batch, shape=cond)) +
+      geom_point() +
+      labs(x="Samples", y=dat_name, title=rownames(dat)[i]) +
+      theme(axis.text.x=element_blank())
+    
+    # violin plot for i-th gene
+    p_violin <- ggplot(curr_df, aes(0, value)) + 
+      geom_violin() +
+      geom_boxplot(width=0.2) +
+      coord_flip() +
+      geom_text(aes(label=as.integer(median(curr_df$value)), x=0.12, y=median(curr_df$value))) +
+      labs(y=dat_name, title=sprintf("All samples, %s", rownames(dat)[i])) +
+      theme(axis.title.y=element_blank())
+    
+    # violin plot group by batch
+    medians_batch <- aggregate(value ~ batch, data=curr_df, FUN=median)
+    p_violin_batch <- ggplot(curr_df, aes(x=batch, y=value, color=batch)) + 
+      geom_violin() +
+      geom_boxplot(width=0.2) +
+      coord_flip() +
+      scale_color_manual(values=c('#E69F00', '#56B4E9')) +
+      geom_text(data=medians_batch, 
+                aes(label=round(medians_batch$value,2), x=as.numeric(as.character(medians_batch$batch))+0.12,
+                    y=as.numeric(as.character(medians_batch$value)))) +
+      labs(y=dat_name, title=sprintf("In batches, %s", rownames(dat)[i])) +
+      theme(axis.title.y=element_blank())
+    
+    # violin plot group by condition
+    medians_cond <- aggregate(value ~ cond, data=curr_df, FUN=median)
+    p_violin_cond <- ggplot(curr_df, aes(x=cond, y=value, color=cond)) + 
+      geom_violin() +
+      geom_boxplot(width=0.2) +
+      coord_flip() +
+      geom_text(data=medians_cond,
+                aes(label=round(medians_cond$value,2), x=as.numeric(as.character(medians_cond$cond))+1.12, 
+                    y=as.numeric(as.character(medians_cond$value)))) +
+      labs(y=dat_name, title=sprintf("In condition groups, %s", rownames(dat)[i])) +
+      theme(axis.title.y=element_blank())
+    
+    # output plot
+    png(sprintf("%s/%s_gene%s.png", file.path(output_dir, "randGplots"), dat_name, i),
+        width=10, height=8, units="in", res=300)
+    grid.arrange(p_scatter, p_violin, p_violin_batch, p_violin_cond, nrow=2, ncol=2)
+    dev.off()
+  }
+}, dat=data_lst, dat_name=names(data_lst), meta_info=list(meta_info,meta_info,meta_info))
+
+rm(cts_subset, cpm_subset, logCPM_subset, lib_sizes, lib_sizes_df, chosen_id, data_lst, void, N_sel)
+```
+
+
+### Fold changes in mean {.tabset}
+
+We then use edgeR to perform differential expression analysis, and calculate (log-) fold changes of all genes between condition groups and batches.
+
+#### Change WRT condition
+
+To rule out the impact of batch effect, we limit our DE analysis with regard to biological condition in one of the batches. Here we specify the batch to be **Batch 1** due to a larger batch size.
+
+```{r, results="hide"}
+####  Differential genes relative to biological condition 
+####  (within batch 1 / batch specified by 'test_batch')
+test_batch <- 1
+counts_batch <- assay(rds_obj,"counts")[, batch==test_batch]
+cond_batch <- group_num[batch==test_batch]
+
+y <- DGEList(counts=counts_batch, group=as.factor(cond_batch))
+y <- calcNormFactors(y, method="TMM")
+design <- model.matrix(~as.factor(cond_batch))
+y <- estimateDisp(y, design)
+fit <- glmQLFit(y, design)
+qlf <- glmQLFTest(fit, coef=2)
+de_res <- topTags(qlf, n=nrow(rds_obj))
+ 
+up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes (descending order in terms of p value)
+head_up_genes <- head(up_genes, n=50)  # top-50 significant up-regulated genes
+tail_up_genes <- tail(up_genes, n=50)  # 50 least significant up-regulated genes
+
+down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
+head_down_genes <- head(down_genes, n=50)  # top-50 significant down-regulated genes
+tail_down_genes <- tail(down_genes, n=50)  # 50 least significant down-regulated genes
+```
+
+```{r, echo=FALSE, message=FALSE}
+# changes in terms of mean
+cat("######  Changes in terms of average gene counts  ######\n")
+mean_cts_mat <- matrix(NA, nrow=2, ncol=3, 
+                       dimnames=list(c("Controls", "Cases"), c("top50 up", "top50 down", "100 least DE")))
+mean_cts_mat["Controls", "top50 up"] <- mean(counts_batch[head_up_genes, cond_batch==0])
+mean_cts_mat["Cases", "top50 up"] <- mean(counts_batch[head_up_genes, cond_batch==1])
+mean_cts_mat["Controls", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==0])
+mean_cts_mat["Cases", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==1])
+mean_cts_mat["Controls", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==0])
+mean_cts_mat["Cases", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==1])
+print(round(mean_cts_mat,3))
+
+# changes in terms of (log) fold change
+cat("\n######  Range of fold change across biological conditions  ######\n")
+FC_mat <- matrix(NA, nrow=4, ncol=3, 
+                 dimnames=list(c("min FC", "median FC", "mean FC", "max FC"), 
+                               c("top50 up", "top50 down", "100 least DE")))
+FC_mat[, "top50 up"] <- sapply(c(min, median, mean, max), function(ff){ff(exp(de_res$table[head_up_genes, "logFC"]))})
+FC_mat[, "top50 down"] <- sapply(c(min, median, mean, max), function(ff){ff(exp(de_res$table[head_down_genes, "logFC"]))})
+FC_mat[, "100 least DE"] <- sapply(c(min, median, mean, max), function(ff){
+  ff(exp(de_res$table[c(tail_up_genes, tail_down_genes), "logFC"]))
+})
+print(round(FC_mat,3))
+
+cat("\n######  Range of Log(fold change) across biological conditions  ######\n")
+logFC_mat <- log(FC_mat)
+rownames(logFC_mat) <- c("min logFC", "median logFC", "mean logFC", "max logFC")
+print(round(logFC_mat,3))
+
+
+# visualize change in terms of (log) fold change
+logFC_df <- data.frame(top50up=de_res$table[head_up_genes, "logFC"], top50down=de_res$table[head_down_genes, "logFC"])
+FC_df <- exp(logFC_df)
+p_logFC <- ggplot(melt(logFC_df), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(y="logFC") +
+  theme(axis.title.x=element_blank())
+p_FC <- ggplot(melt(FC_df), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(y="FC") +
+  theme(axis.title.x=element_blank())
+grid.arrange(p_logFC, p_FC, ncol=2)
+```
+
+```{r, echo=FALSE, results='hide'}
+rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes, 
+   down_genes, head_down_genes, tail_down_genes, y, design, fit, qlf, de_res, 
+   mean_cts_mat, FC_mat, p_FC, p_logFC, FC_df, logFC_df, logFC_mat)
+```
+
+
+#### Change WRT batch
+
+We are also interested to see how the average (mean) gene counts change across batches (i.e. **degree of mean batch effect**). To explore this mean batch effect, we perform DE with regard to the batch variable. To rule out the impact of biological condition, we perform this analysis within **control** samples only. Note that this DE is not true DE - it's testing if there is a significant mean difference between two batches. Some genes will not be different in mean, while some will. Which means that batch doesn't affect all genes in the same way.
+
+```{r, results="hide"}
+####  Differential genes relative to batch 
+####  (within condition 0 / condition specified by 'test_cond')
+test_cond <- 0
+counts_cond <- assay(rds_obj,"counts")[, group_num==test_cond]
+batch_cond <- batch[group_num==test_cond]
+
+y <- DGEList(counts=counts_cond, group=as.factor(batch_cond))
+y <- calcNormFactors(y, method="TMM")
+design <- model.matrix(~as.factor(batch_cond))
+y <- estimateDisp(y, design)
+fit <- glmQLFit(y, design)
+qlf <- glmQLFTest(fit, coef=2)
+de_res <- topTags(qlf, n=nrow(rds_obj))
+
+up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes
+head_up_genes <- head(up_genes, n=50)  # top-50 up-regulated genes
+tail_up_genes <- tail(up_genes, n=50)  # 50 least up-regulated genes
+
+down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
+head_down_genes <- head(down_genes, n=50)  # top-50 down-regulated genes
+tail_down_genes <- tail(down_genes, n=50)  # 50 least down-regulated genes
+```
+
+```{r, echo=FALSE}
+# changes in terms of mean
+cat("######  Batch differences in terms of mean gene counts  ######\n")
+mean_cts_mat <- matrix(NA, nrow=2, ncol=3, 
+                       dimnames=list(c("Batch1", "Batch2"), c("top50 up", "top50 down", "100 least changed")))
+mean_cts_mat["Batch1", "top50 up"] <- mean(counts_cond[head_up_genes, batch_cond==1])
+mean_cts_mat["Batch2", "top50 up"] <- mean(counts_cond[head_up_genes, batch_cond==2])
+mean_cts_mat["Batch1", "top50 down"] <- mean(counts_cond[head_down_genes, batch_cond==1])
+mean_cts_mat["Batch2", "top50 down"] <- mean(counts_cond[head_down_genes, batch_cond==2])
+mean_cts_mat["Batch1", "100 least changed"] <- mean(counts_cond[c(tail_up_genes, tail_down_genes), batch_cond==1])
+mean_cts_mat["Batch2", "100 least changed"] <- mean(counts_cond[c(tail_up_genes, tail_down_genes), batch_cond==2])
+print(round(mean_cts_mat,2))
+
+# changes in terms of fold change
+cat("\n######  Range of fold change between batches  ######\n")
+cat("- All genes - FC:\n")
+cat(round(range(exp(de_res$table$logFC)), 3)) 
+
+cat("\n\n- All genes - log(FC):\n")
+cat(round(range(de_res$table$logFC), 3)) 
+
+cat("\n\n- Top genes - FC:\n")
+FC_mat <- matrix(NA, nrow=4, ncol=3, 
+                 dimnames=list(c("min FC", "median FC", "mean FC", "max FC"), 
+                               c("top50 up", "top50 down", "100 least DE")))
+FC_mat[, "top50 up"] <- sapply(c(min, median, mean, max), function(ff){ff(exp(de_res$table[head_up_genes, "logFC"]))})
+FC_mat[, "top50 down"] <- sapply(c(min, median, mean, max), function(ff){ff(exp(de_res$table[head_down_genes, "logFC"]))})
+FC_mat[, "100 least DE"] <- sapply(c(min, median, mean, max), function(ff){
+  ff(exp(de_res$table[c(tail_up_genes, tail_down_genes), "logFC"]))
+})
+print(round(FC_mat,3))
+
+cat("\n- Top genes - log(FC):\n")
+logFC_mat <- log(FC_mat)
+rownames(logFC_mat) <- c("min logFC", "median logFC", "mean logFC", "max logFC")
+print(round(logFC_mat,3))
+
+```
+
+```{r, echo=FALSE, results='hide'}
+rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes, 
+   down_genes, head_down_genes, tail_down_genes, y, design, fit, qlf, de_res, 
+   mean_cts_mat, FC_mat, logFC_mat)
+```
+
+
+### Dispersion
+
+Aside from average gene counts, we are interested in comparing dispersions in the two batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
+
+```{r, echo=FALSE}
+####  Dispersion differences across batch 1 and 2
+y_batch1 <- DGEList(counts=assay(rds_obj,"counts")[, batch==1], group=as.factor(group_num[batch==1]))
+y_batch1 <- calcNormFactors(y_batch1, method="TMM")
+design_batch1 <- model.matrix(~as.factor(group_num[batch==1]))
+y_batch1 <- estimateDisp(y_batch1, design_batch1)
+
+y_batch2 <- DGEList(counts=assay(rds_obj,"counts")[, batch==2], group=as.factor(group_num[batch==2]))
+y_batch2 <- calcNormFactors(y_batch2, method="TMM")
+design_batch2 <- model.matrix(~as.factor(group_num[batch==2]))
+y_batch2 <- estimateDisp(y_batch2, design_batch2)
+
+disp_df <- data.frame(Batch1=y_batch1$tagwise.dispersion, Batch2=y_batch2$tagwise.dispersion)
+
+cat("####  Statistics about dispersion estimates from the two batches  ####\n")
+disp_stats <- lapply(c(min, median, mean, max), function(ff){apply(disp_df, 2, ff)})
+disp_stats <- do.call(rbind, disp_stats)
+rownames(disp_stats) <- c("min disp.", "median disp.", "mean disp.", "max disp.")
+print(round(disp_stats, 5))
+```
+
+```{r, echo=FALSE, message=FALSE}
+disp_df_mlt <- melt(disp_df)
+ggplot(disp_df_mlt, aes(x=variable, y=value)) +
+  geom_violin() +
+  labs(x="Batch", y="Estimated gene-wise dispersion", 
+       title="Comparison of estimated dispersion across batches") +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", shape=18, size=3) +
+  scale_y_continuous(limits=c(0, 1))
+```
+
+
+
+## Session info 
+
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+## References

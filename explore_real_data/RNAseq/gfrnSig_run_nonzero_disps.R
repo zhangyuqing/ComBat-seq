@@ -1,17 +1,29 @@
 ####  The dispersion estimates using non-zero portion of genes take too...ooo long to run. 
 ####  To save time, I'll run it once and save it as RData to avoid waiting too long each time I need to recreate the report
 rm(list=ls())
-setwd("~/Google Drive/ComBat_seq/real_data_example/RNAseq/CHD8")
+setwd("~/Google Drive/ComBat_seq/real_data_example/RNAseq/gfrn_signature/")
 sapply(c("recount", "DESeq2", "edgeR", "dendextend", "ggplot2", "reshape2", "gridExtra", "scales", 
          "ggdendro", "MASS"), require, character.only=TRUE)
 
 ####  Load data
-load("rse_gene.Rdata")
-rse_gene <- rse_gene[apply(assay(rse_gene, "counts"), 1, function(x){!all(x==0)}), ]
-print(dim(rse_gene))
-cts <- assay(rse_gene, "counts")
-batch <- as.numeric(as.character(colData(rse_gene)$batch))
-group_num <- as.numeric(as.character(colData(rse_gene)$condition_bi))
+sigdata <- readRDS("signature_data.rds")
+cts_mat <- assay(sigdata, "counts")
+rownames(cts_mat) <- paste0("gene", 1:nrow(cts_mat))
+batch <- colData(sigdata)$batch
+group <- colData(sigdata)$group
+
+group_num <- rep(0, ncol(cts_mat))
+cond_names <- levels(group)[c(1:3,7:nlevels(group))]
+for(i in 1:length(cond_names)){group_num[grep(paste0("^",cond_names[i]), group)] <- i}
+colData(sigdata)$condition_bi <- as.factor(group_num)
+colData(sigdata)$batch <- as.factor(batch)
+
+sigdata <- sigdata[apply(cts_mat, 1, function(x){!all(x==0)}), ]
+cts <- assay(sigdata, "counts")
+rownames(cts) <- paste0("gene", 1:nrow(sigdata))
+print(dim(cts))
+rm(cts_mat)
+
 glm_ctrl <- glm.control(maxit=200)
 
 
@@ -41,6 +53,19 @@ disp_full_batch2 <- sapply(1:nrow(cts), function(ll){
   return(NA)
 })
 disp_full_batch2 <- disp_full_batch2[!is.na(disp_full_batch2)]
+
+# batch 3
+disp_full_batch3 <- sapply(1:nrow(cts), function(ll){
+  curr_cts <- cts[ll, batch==3] 
+  if(length(curr_cts) > 2 & var(curr_cts) > 0){
+    curr_f <- try(glm.nb(curr_cts ~ as.factor(group_num[batch==3]), control=glm_ctrl), silent=TRUE)
+    if(class(curr_f)[1]!="try-error"){
+      return(1/summary(curr_f)$theta)
+    }
+  }
+  return(NA)
+})
+disp_full_batch3 <- disp_full_batch3[!is.na(disp_full_batch3)]
 
 
 ####  Use only non-zero portions of each gene to estimate dispersion
@@ -74,16 +99,6 @@ disp_nonzero_batch1 <- sapply(1:length(nonzero_cts_batch1), function(ii){
       return(1/summary(curr_f)$theta)
     }
   }
-  # curr_y <- DGEList(counts=t(as.matrix(curr_cts)), group=as.factor(curr_group))
-  # if(length(curr_cts) > 3 & var(curr_cts) > 0){
-  #   if(length(unique(curr_group))>1){
-  #     curr_design <- model.matrix(~as.factor(curr_group))
-  #   }else{
-  #     curr_design <- NULL
-  #   }
-  #   curr_y <- try(estimateDisp(curr_y, curr_design), silent=TRUE)
-  #   if(class(curr_y)[1]!="try-error"){return(curr_y$tagwise.dispersion)}
-  # }
   return(NA)
 })
 disp_nonzero_batch1 <- disp_nonzero_batch1[!is.na(disp_nonzero_batch1)]
@@ -110,10 +125,32 @@ disp_nonzero_batch2 <- sapply(1:length(nonzero_cts_batch2), function(jj){
 })
 disp_nonzero_batch2 <- disp_nonzero_batch2[!is.na(disp_nonzero_batch2)]
 
+##  Dispersion in batch 3
+#take batch 3 data
+group_sep_batch3 <- nonzero_cts_batch3 <- list()
+for(k in 1:length(nonzero_cts)){
+  group_sep_batch3[[k]] <- group_sep[[k]][batch_sep[[k]]==3]
+  nonzero_cts_batch3[[k]] <- nonzero_cts[[k]][batch_sep[[k]]==3]
+}
+names(nonzero_cts_batch3) <- names(group_sep_batch3) <- rownames(cts)
+# calculate dispersions
+disp_nonzero_batch3 <- sapply(1:length(nonzero_cts_batch3), function(kk){
+  curr_cts <- nonzero_cts_batch3[[kk]] 
+  curr_group <- group_sep_batch3[[kk]]
+  if(length(curr_cts) > 2 & var(curr_cts) > 0){
+    curr_f <- try(glm.nb(curr_cts ~ as.factor(curr_group), control=glm_ctrl), silent=TRUE)
+    if(class(curr_f)[1]!="try-error"){
+      return(1/summary(curr_f)$theta)
+    }
+  }
+  return(NA)
+})
+disp_nonzero_batch3 <- disp_nonzero_batch3[!is.na(disp_nonzero_batch3)]
+
 
 ####  Compare
-disp_full_lst <- list(Batch1=disp_full_batch1, Batch2=disp_full_batch2)
-disp_nonzero_lst <- list(Batch1=disp_nonzero_batch1, Batch2=disp_nonzero_batch2)
+disp_full_lst <- list(Batch1=disp_full_batch1, Batch2=disp_full_batch2, Batch3=disp_full_batch3)
+disp_nonzero_lst <- list(Batch1=disp_nonzero_batch1, Batch2=disp_nonzero_batch2, Batch3=disp_nonzero_batch3)
 
 disp_full_stats <- lapply(c(min, median, mean, max), function(ff){sapply(disp_full_lst, ff)})
 disp_full_stats <- do.call(rbind, disp_full_stats)
@@ -126,4 +163,6 @@ print(round(disp_nonzero_stats, 4))
 
 
 ####  Save result
-save(disp_nonzero_batch1, disp_nonzero_batch2, disp_full_batch1, disp_full_batch2, file="disps_nonzero.RData")
+save(disp_nonzero_batch1, disp_nonzero_batch2, disp_nonzero_batch3,
+     disp_full_batch1, disp_full_batch2, disp_full_batch3,
+     file="disps_nonzero.RData")
