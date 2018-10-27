@@ -16,6 +16,7 @@ ReCount is a public database of pre-processed RNA-seq gene count data [@collado2
 
 Here, I searched the ReCount database with the keyword "batch", and found a few datasets with abstracts containing this word (which means that the dataset potentially has batch effect). One of them is SRP047233 [@sugathan2014chd8]. This dataset aims to investigate the impact of decreased CHD8 expression on the expression of genes in downstream (CHD8-regulated) network. Truncating mutation of CHD8 is an important risk factor for autism spectrum disorder (ASD).
 
+
 ### Overall design
 
 RNA-seq in NPCs treated with shRNAs targeting CHD8. For controls, NPCs were treated with shRNAs targeting GFP and LacZ. Infection and sequencing was carried out in 2 separate batches, with one GFP and one LacZ sample in each batch. All samples were sequenced in two technical replicates. (https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP047233)
@@ -28,8 +29,8 @@ First, we download the data using the recount R package as shown in its vignette
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
 output_dir <- "~/Google Drive/ComBat_seq/real_data_example/RNAseq/CHD8"
-sapply(c("recount", "DESeq2", "edgeR", "dendextend", "ggplot2", "reshape2", "gridExtra", "scales", "ggdendro"), 
-       require, character.only=TRUE)
+sapply(c("recount", "DESeq2", "edgeR", "dendextend", "ggplot2", "reshape2", "gridExtra", "scales", 
+         "ggdendro", "MASS"), require, character.only=TRUE)
 
 
 ####  Load data
@@ -170,6 +171,7 @@ p_cond <- ggplot(pca_obj$data, aes(x=PC1, y=PC2, color=cond)) +
 grid.arrange(p_batch, p_cond, ncol=2)
 ```
 
+
 ### Dendrograms
 
 ```{r, echo=FALSE, fig.height=3, fig.width=5}
@@ -201,6 +203,7 @@ rm(counts_norm, ddata, dend, hc, p_batch, p_cond, pca_obj, pd_batch, pd_cond, tm
 ```
 
 
+
 ## Library size
 
 Next, we take a look at the observed library sizes of samples, and to see if there is a difference in library size across batches.
@@ -211,7 +214,6 @@ lib_sizes <- colSums(assay(rse_gene, "counts"))
 cat("Range of observed library sizes across samples:\n")
 print(scientific(range(lib_sizes)))
 ```
-
 
 ```{r, echo=FALSE, fig.height=2, fig.width=4}
 lib_sizes_df <- data.frame(lib_sizes=lib_sizes, batch=as.factor(batch))
@@ -234,6 +236,7 @@ grid.arrange(plib1, plib2, ncol=2)
 
 rm(plib1, plib2)
 ```
+
 
 
 ## Gene expression distribution
@@ -338,9 +341,13 @@ up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes 
 head_up_genes <- head(up_genes, n=50)  # top-50 significant up-regulated genes
 tail_up_genes <- tail(up_genes, n=50)  # 50 least significant up-regulated genes
 
+cond_up_inds <- up_genes
+
 down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
 head_down_genes <- head(down_genes, n=50)  # top-50 significant down-regulated genes
 tail_down_genes <- tail(down_genes, n=50)  # 50 least significant down-regulated genes
+
+cond_down_inds <- down_genes
 ```
 
 ```{r, echo=FALSE, message=FALSE}
@@ -354,7 +361,7 @@ mean_cts_mat["Controls", "top50 down"] <- mean(counts_batch[head_down_genes, con
 mean_cts_mat["Cases", "top50 down"] <- mean(counts_batch[head_down_genes, cond_batch==1])
 mean_cts_mat["Controls", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==0])
 mean_cts_mat["Cases", "100 least DE"] <- mean(counts_batch[c(tail_up_genes, tail_down_genes), cond_batch==1])
-print(round(mean_cts_mat,3))
+print(round(mean_cts_mat,1))
 
 # changes in terms of (log) fold change
 cat("\n######  Range of fold change across biological conditions  ######\n")
@@ -394,6 +401,11 @@ rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes,
    mean_cts_mat, FC_mat, p_FC, p_logFC, FC_df, logFC_df, logFC_mat)
 ```
 
+**Conclusions:**
+
++ Biological fold change comparing average counts is about 2. 
++ Gene-wise fold change has a wide range.
+
 
 #### Change WRT batch
 
@@ -418,9 +430,13 @@ up_genes <- rownames(de_res)[de_res$table$logFC >= 0]  # all up-regulated genes
 head_up_genes <- head(up_genes, n=50)  # top-50 up-regulated genes
 tail_up_genes <- tail(up_genes, n=50)  # 50 least up-regulated genes
 
+batch_up_inds <- up_genes
+
 down_genes <- rownames(de_res)[de_res$table$logFC < 0]  # all down-regulated genes
 head_down_genes <- head(down_genes, n=50)  # top-50 down-regulated genes
 tail_down_genes <- tail(down_genes, n=50)  # 50 least down-regulated genes
+
+batch_down_inds <- down_genes
 ```
 
 ```{r, echo=FALSE}
@@ -468,6 +484,11 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
    mean_cts_mat, FC_mat, logFC_mat)
 ```
 
+**Conclusions:**
+
++ Mean batch effect fold change comparing average counts ranges from 1.5-4. 
++ Gene-wise mean batch effect fold change has a wide range.
+
 
 ### Dispersion
 
@@ -506,11 +527,240 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 
 
 
+## Impact of 0 counts on gene distributions
+
+We have seen that about half of genes in the dataset contain some portion of zeros. Having 0 counts can have a great impact on mean and dispersion estimation. We evaluate such impact in this section, and see how NB distribution fits to non-zero portion of genes. We first take the non-zero portion of the genes.
+
+### Fold change in mean in non-zero portion {.tabset}
+
+```{r, echo=FALSE}
+cts <- assay(rse_gene, "counts")
+
+# take out non-zero portion in each gene
+batch_sep <- group_sep <- nonzero_cts <- list()
+for(i in 1:nrow(cts)){
+  nonzero_ind <- which(cts[i, ]!=0)
+  batch_sep[[i]] <- batch[nonzero_ind]
+  group_sep[[i]] <- group_num[nonzero_ind]
+  nonzero_cts[[i]] <- cts[i, nonzero_ind]
+}
+# sanity check
+if(!identical(sapply(nonzero_cts, length), as.integer(rowSums(cts!=0)))){stop("Error in taking non-zero portions!")}
+
+names(nonzero_cts) <- rownames(cts); names(batch_sep) <- rownames(cts); names(group_sep) <- rownames(cts)
+```
+
+####  Change WRT condition in batch 1
+
+Within **batch 1**, we compare mean (here refers to non-zero mean) across biological condition groups. Specifically, **we saved the previous DE analysis results using edgeR, on counts containing zeros**. We call all genes with $\log(FC) >= 0$ as "up" genes, and $\log(FC) < 0$ as "down" genes. The top 50 "up" and "down" genes are still determined by the previous DE containing zeros. 
+
+```{r, echo=FALSE}
+# take batch 1
+group_sep_batch1 <- nonzero_cts_batch1 <- list()
+for(i in 1:length(nonzero_cts)){
+  group_sep_batch1[[i]] <- group_sep[[i]][batch_sep[[i]]==1]
+  nonzero_cts_batch1[[i]] <- nonzero_cts[[i]][batch_sep[[i]]==1]
+}
+names(nonzero_cts_batch1) <- names(group_sep_batch1) <- rownames(cts)
+
+# split into controls & cases
+nonzero_cts_b1_ctrls <- nonzero_cts_b1_cases <- list()
+for(j in 1:length(nonzero_cts_batch1)){
+  nonzero_cts_b1_ctrls[[j]] <- nonzero_cts_batch1[[j]][group_sep_batch1[[j]]==0]
+  nonzero_cts_b1_cases[[j]] <- nonzero_cts_batch1[[j]][group_sep_batch1[[j]]==1]
+}#identical(sapply(nonzero_cts_b1_ctrls, length) + sapply(nonzero_cts_b1_cases, length), sapply(nonzero_cts_batch1,length))
+names(nonzero_cts_b1_ctrls) <- names(nonzero_cts_b1_cases) <- rownames(cts)
+
+# top 50 up and down indices
+top_up_ind <- head(cond_up_inds, 50)
+top_down_ind <- head(cond_down_inds, 50)
+least_de_ind <- c(tail(cond_up_inds, 50), tail(cond_down_inds, 50))
+
+# calculate mean in top up, down and least DE
+cat("######  Changes in MEAN non-zero gene counts  ######\n")
+mean_nonzerocts_mat <- matrix(NA, nrow=2, ncol=3, 
+                              dimnames=list(c("Controls", "Cases"), c("top50 up", "top50 down", "100 least DE")))
+mean_nonzerocts_mat["Controls", "top50 up"] <- mean(do.call(c, nonzero_cts_b1_ctrls[top_up_ind]))
+mean_nonzerocts_mat["Cases", "top50 up"] <- mean(do.call(c, nonzero_cts_b1_cases[top_up_ind]))
+mean_nonzerocts_mat["Controls", "top50 down"] <- mean(do.call(c, nonzero_cts_b1_ctrls[top_down_ind]))
+mean_nonzerocts_mat["Cases", "top50 down"] <- mean(do.call(c, nonzero_cts_b1_cases[top_down_ind]))
+mean_nonzerocts_mat["Controls", "100 least DE"] <- mean(do.call(c, nonzero_cts_b1_ctrls[least_de_ind]))
+mean_nonzerocts_mat["Cases", "100 least DE"] <- mean(do.call(c, nonzero_cts_b1_cases[least_de_ind]))
+print(round(mean_nonzerocts_mat,1))
+```
+
+```{r,echo=FALSE}
+cat("######  Changes in MEDIAN non-zero gene counts  ######\n")
+median_nonzerocts_mat <- matrix(NA, nrow=2, ncol=3, 
+                              dimnames=list(c("Controls", "Cases"), c("top50 up", "top50 down", "100 least DE")))
+median_nonzerocts_mat["Controls", "top50 up"] <- median(do.call(c, nonzero_cts_b1_ctrls[top_up_ind]))
+median_nonzerocts_mat["Cases", "top50 up"] <- median(do.call(c, nonzero_cts_b1_cases[top_up_ind]))
+median_nonzerocts_mat["Controls", "top50 down"] <- median(do.call(c, nonzero_cts_b1_ctrls[top_down_ind]))
+median_nonzerocts_mat["Cases", "top50 down"] <- median(do.call(c, nonzero_cts_b1_cases[top_down_ind]))
+median_nonzerocts_mat["Controls", "100 least DE"] <- median(do.call(c, nonzero_cts_b1_ctrls[least_de_ind]))
+median_nonzerocts_mat["Cases", "100 least DE"] <- median(do.call(c, nonzero_cts_b1_cases[least_de_ind]))
+print(round(median_nonzerocts_mat,1))
+```
+
+**Conclusions: ** 
+
++ Biological fold change (in non-zero portion) comparing average counts is about 1.9-2.2 (mean), 1.1 - 2.5 (median).**
++ O counts did not strongly affect biological signal in terms of average counts.
+
+
+####  Change WRT batch in control samples
+
+Similarly, we compare non-zero mean across batches within control samples.
+
+```{r, echo=FALSE}
+# take controls
+batch_sep_cond0 <- nonzero_cts_cond0 <- list()
+for(i in 1:length(nonzero_cts)){
+  batch_sep_cond0[[i]] <- batch_sep[[i]][group_sep[[i]]==0]
+  nonzero_cts_cond0[[i]] <- nonzero_cts[[i]][group_sep[[i]]==0]
+}
+names(batch_sep_cond0) <- names(nonzero_cts_cond0) <- rownames(cts)
+
+# split into batch 1 & 2
+nonzero_cts_cond0_batch1 <- nonzero_cts_cond0_batch2 <- list()
+for(j in 1:length(nonzero_cts_batch1)){
+  nonzero_cts_cond0_batch1[[j]] <- nonzero_cts_cond0[[j]][batch_sep_cond0[[j]]==1]
+  nonzero_cts_cond0_batch2[[j]] <- nonzero_cts_cond0[[j]][batch_sep_cond0[[j]]==2]
+}
+names(nonzero_cts_cond0_batch1) <- names(nonzero_cts_cond0_batch2) <- rownames(cts)
+
+# top 50 up and down indices
+top_up_ind <- head(batch_up_inds, 50)
+top_down_ind <- head(batch_down_inds, 50)
+least_de_ind <- c(tail(batch_up_inds, 50), tail(batch_down_inds, 50))
+
+# calculate mean in top up, down and least DE
+cat("######  Changes in MEAN non-zero gene counts  ######\n")
+mean_nonzerocts_mat <- matrix(NA, nrow=2, ncol=3, 
+                              dimnames=list(c("Batch 1", "Batch 2"), c("top50 up", "top50 down", "100 least DE")))
+mean_nonzerocts_mat["Batch 1", "top50 up"] <- mean(do.call(c, nonzero_cts_cond0_batch1[top_up_ind]))
+mean_nonzerocts_mat["Batch 2", "top50 up"] <- mean(do.call(c, nonzero_cts_cond0_batch2[top_up_ind]))
+mean_nonzerocts_mat["Batch 1", "top50 down"] <- mean(do.call(c, nonzero_cts_cond0_batch1[top_down_ind]))
+mean_nonzerocts_mat["Batch 2", "top50 down"] <- mean(do.call(c, nonzero_cts_cond0_batch2[top_down_ind]))
+mean_nonzerocts_mat["Batch 1", "100 least DE"] <- mean(do.call(c, nonzero_cts_cond0_batch1[least_de_ind]))
+mean_nonzerocts_mat["Batch 2", "100 least DE"] <- mean(do.call(c, nonzero_cts_cond0_batch2[least_de_ind]))
+print(round(mean_nonzerocts_mat,1))
+```
+
+```{r, echo=FALSE}
+# calculate median in top up, down and least DE
+cat("######  Changes in MEDIAN non-zero gene counts  ######\n")
+median_nonzerocts_mat <- matrix(NA, nrow=2, ncol=3, 
+                                dimnames=list(c("Batch 1", "Batch 2"), c("top50 up", "top50 down", "100 least DE")))
+median_nonzerocts_mat["Batch 1", "top50 up"] <- median(do.call(c, nonzero_cts_cond0_batch1[top_up_ind]))
+median_nonzerocts_mat["Batch 2", "top50 up"] <- median(do.call(c, nonzero_cts_cond0_batch2[top_up_ind]))
+median_nonzerocts_mat["Batch 1", "top50 down"] <- median(do.call(c, nonzero_cts_cond0_batch1[top_down_ind]))
+median_nonzerocts_mat["Batch 2", "top50 down"] <- median(do.call(c, nonzero_cts_cond0_batch2[top_down_ind]))
+median_nonzerocts_mat["Batch 1", "100 least DE"] <- median(do.call(c, nonzero_cts_cond0_batch1[least_de_ind]))
+median_nonzerocts_mat["Batch 2", "100 least DE"] <- median(do.call(c, nonzero_cts_cond0_batch2[least_de_ind]))
+print(round(median_nonzerocts_mat,1))
+```
+
+**Conclusions:** 
+
++ Mean batch effect fold change comparing average counts ranges from 1.5-4 (mean), 1.3-6 (median). 
++ O counts did not strongly affect mean batch effect in terms of average counts.
+
+
+### Dispersion with 0 counts removed 
+
+Dispersion estimates are more likely impacted by 0 counts. We re-estimate the dispersions in each batch, using non-zero portion of each gene. Then we compare the dispersion estimates across batches.
+
+```{r, echo=FALSE}
+load(file.path(output_dir, "disps_nonzero.RData"))
+disp_nonzero_lst <- list(Batch1=disp_nonzero_batch1, Batch2=disp_nonzero_batch2)
+
+cat("####  Statistics about dispersion estimates (from NON-ZERO portions) from the two batches  ####\n")
+disp_stats <- lapply(c(min, median, mean, max), function(ff){sapply(disp_nonzero_lst, ff)})
+disp_stats <- do.call(rbind, disp_stats)
+rownames(disp_stats) <- c("min disp.", "median disp.", "mean disp.", "max disp.")
+print(round(disp_stats, 5))
+```
+
+```{r, echo=FALSE, message=FALSE}
+disp_nonzero_df <- data.frame(Batch=c(rep("Batch1", length(disp_nonzero_batch1)), 
+                                      rep("Batch2", length(disp_nonzero_batch2))),
+                              value=do.call(c, disp_nonzero_lst))
+ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
+  geom_violin() +
+  labs(x="Batch", y="Estimated gene-wise dispersion on NON-ZERO counts", 
+       title="Comparison of estimated dispersion across batches") +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", shape=18, size=3) #+
+  #scale_y_continuous(limits=c(0, 1))
+```
+
+**Conclusions:**
+
++ The absolute value of dispersion are indeed reduced after 0 counts are removed.
++ In this report, dispersion are calculated by different methods before and after removing 0 counts. Not directly comparable.
++ We show in another analysis that the relationship between two batch did not change much after removing 0s.
+
+
+### Is there a difference in zero portions across batches?
+
+Another question related to batch effect, is whether there is any difference in the percentage of 0 counts in a gene between two batches. 
+
+```{r, echo=FALSE, message=FALSE}
+cts <- assay(rse_gene, "counts")
+
+n_zeros_batch1 <- apply(cts[, batch==1], 1, function(x){length(which(x==0))})
+percent_zeros_batch1 <- n_zeros_batch1 / sum(batch==1)
+n_zeros_batch2 <- apply(cts[, batch==2], 1, function(y){length(which(y==0))})
+percent_zeros_batch2 <- n_zeros_batch2 / sum(batch==2)
+
+percent_zeros_batch_df <- data.frame(Batch1=percent_zeros_batch1, Batch2=percent_zeros_batch2)
+percent_zeros_batch_df_mlt <- melt(percent_zeros_batch_df, variable.name="Batch")
+ggplot(percent_zeros_batch_df_mlt, aes(x=Batch, y=value)) +
+  geom_violin() +
+  labs(y="Percentage of 0 counts in a single gene") +
+  theme(axis.title.x=element_blank())
+```
+
+**Conclusions:**
+
++ There isn't an obvious difference in zero fractions between batches.
+
+
+### Goodness of fit for NB to non-zero portion of genes
+
+It is difficult to evaluate quantitatively the goodness-of-fit of NB on data. Instead, we randomly generate Q-Q plots for 100 genes, comparing data with NB distribution using ML estimated parameters. We generate these plots within batch 1, for cases and control samples separately. Figures are stored under .
+
+```{r, echo=FALSE, results="hide"}
+if(!dir.exists(file.path(output_dir, "qqplots"))){dir.create(file.path(output_dir, "qqplots"))}
+set.seed(1234)
+N_sel_nb <- 100
+chosen_id_nb <- sample(1:nrow(rse_gene), N_sel_nb, replace=FALSE)
+cts_subset_nb <- cts[chosen_id_nb, ]
+for(i in 1:N_sel_nb){
+  curr_cts <- cts_subset_nb[i, batch==1 & group_num==1]
+  curr_cts <- curr_cts[curr_cts!=0]
+  if(length(curr_cts) < 2 | var(curr_cts)==0){next}
+  df <- data.frame(y=curr_cts)
+  params <- fitdistr(df$y, "negative binomial")$estimate
+  
+  png(paste0(output_dir, "/qqplots/sel_gene", i, ".png"), 
+      width=5, height=5, units="in", res=300)
+  print(ggplot(df, aes(sample=y)) +
+          stat_qq(distribution=qnbinom, dparams=params) + 
+          stat_qq_line(distribution=qnbinom, dparams=params) +
+          labs(title="Q-Q plot: Batch 1 cases"))
+  dev.off()
+}
+```
+
+
+
 ## Session info 
 
 ```{r, echo=FALSE}
 sessionInfo()
 ```
+
 
 
 ## References
