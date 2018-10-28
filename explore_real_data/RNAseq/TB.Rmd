@@ -697,9 +697,9 @@ Dispersion estimates are more likely impacted by 0 counts. We re-estimate the di
 
 ```{r, echo=FALSE}
 load(file.path(output_dir, "disps_nonzero.RData"))
-disp_nonzero_lst <- list(Africa=disp_nonzero_batch_africa, G6=disp_nonzero_batch_G6,
-                         India=disp_nonzero_batch_india, Brazil_1=disp_nonzero_batch_bzl1, 
-                         Brazil_2=disp_nonzero_batch_bzl2)
+disp_nonzero_lst <- list(Africa=disp_nonzero_africa, G6=disp_nonzero_G6,
+                         India=disp_nonzero_india, Brazil_1=disp_nonzero_bzl1, 
+                         Brazil_2=disp_nonzero_bzl2)
 cat("####  Statistics about dispersion estimates (from NON-ZERO portions) from the two batches  ####\n")
 disp_stats <- lapply(c(min, median, mean, max), function(ff){sapply(disp_nonzero_lst, ff)})
 disp_stats <- do.call(rbind, disp_stats)
@@ -708,11 +708,11 @@ print(round(disp_stats, 4))
 ```
 
 ```{r, echo=FALSE, message=FALSE}
-disp_nonzero_df <- data.frame(Batch=c(rep("Africa", length(disp_nonzero_batch_africa)), 
-                                      rep("G6", length(disp_nonzero_batch_G6)),
-                                      rep("India", length(disp_nonzero_batch_india)),
-                                      rep("Brazil_1", length(disp_nonzero_batch_bzl1)),
-                                      rep("Brazil_2", length(disp_nonzero_batch_bzl2))),
+disp_nonzero_df <- data.frame(Batch=c(rep("Africa", length(disp_nonzero_africa)), 
+                                      rep("G6", length(disp_nonzero_G6)),
+                                      rep("India", length(disp_nonzero_india)),
+                                      rep("Brazil_1", length(disp_nonzero_bzl1)),
+                                      rep("Brazil_2", length(disp_nonzero_bzl2))),
                               value=do.call(c, disp_nonzero_lst))
 ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
   geom_violin() +
@@ -724,10 +724,10 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 
 **Conclusions:**
 
-+ Mean dispersion of Batch 1 is roughly 2 times that of Batch 2.
-+ The absolute value of dispersion are indeed reduced after 0 counts are removed.
++ Mean dispersion of Brazil batch 1 is roughly 3.4 times that of India.
++ The absolute value of max gene-wise dispersion are reduced after 0 counts are removed.
 + In this report, dispersion are calculated by different methods before and after removing 0 counts. **Not directly comparable.**
-+ We show in another analysis (*TB_run_nonzero_disps.R*) that the relationship between two batch did not change much after removing 0s.
++ We show in another analysis (*TB_run_nonzero_disps.R*) that **the difference in dispersion is reduced after removing 0s**.
 
 
 ### Is there a difference in zero portions across batches?
@@ -758,15 +758,15 @@ ggplot(percent_zeros_batch_df_mlt, aes(x=Batch, y=value)) +
 
 **Conclusions:**
 
-+ There isn't an obvious difference in zero fractions between batches (aside from Brazil datasets which are too small).
++ There isn't an obvious difference in zero fractions between batches (aside from Brazil batch 2 which is too small).
 
 
 ### Goodness of fit for NB distribution to non-zero portion of genes
 
-It is difficult to evaluate quantitatively the goodness-of-fit of NB distribution on data. Instead, we generate Q-Q plots for 100 randomly selected genes, comparing data with NB distribution using ML estimated parameters. We generate these plots **within G6, for cases and control samples separately**. Figures are stored under {output_dir}/qqplots/.
+It is difficult to evaluate quantitatively the goodness-of-fit of NB distribution on data. Instead, we generate Q-Q plots for 100 randomly selected genes, comparing data with NB distribution using ML estimated parameters. We generate these plots **within G6/Africa, for cases and control samples separately**. Figures are stored under {output_dir}/qqplots_{Study}/.
 
 ```{r, echo=FALSE, results="hide"}
-if(!dir.exists(file.path(output_dir, "qqplots"))){dir.create(file.path(output_dir, "qqplots"))}
+if(!dir.exists(file.path(output_dir, "qqplots_G6"))){dir.create(file.path(output_dir, "qqplots_G6"))}
 set.seed(1234)
 N_sel_nb <- 100
 chosen_id_nb <- sample(1:nrow(rds_obj), N_sel_nb, replace=FALSE)
@@ -779,7 +779,7 @@ for(i in 1:N_sel_nb){
   df <- data.frame(y=curr_cts)
   params <- fitdistr(df$y, "negative binomial")$estimate
   
-  png(paste0(output_dir, "/qqplots/gene", i, "_cases.png"), 
+  png(paste0(output_dir, "/qqplots_G6/gene", i, "_cases.png"), 
       width=5, height=5, units="in", res=300)
   print(ggplot(df, aes(sample=y)) +
           stat_qq(distribution=qnbinom, dparams=params) + 
@@ -795,7 +795,7 @@ for(i in 1:N_sel_nb){
   df <- data.frame(y=curr_cts)
   params <- fitdistr(df$y, "negative binomial")$estimate
   
-  png(paste0(output_dir, "/qqplots/gene", i, "_controls.png"), 
+  png(paste0(output_dir, "/qqplots_G6/gene", i, "_controls.png"), 
       width=5, height=5, units="in", res=300)
   print(ggplot(df, aes(sample=y)) +
           stat_qq(distribution=qnbinom, dparams=params) + 
@@ -805,7 +805,45 @@ for(i in 1:N_sel_nb){
 }
 ```
 
-
+```{r, echo=FALSE, results="hide"}
+if(!dir.exists(file.path(output_dir, "qqplots_africa"))){dir.create(file.path(output_dir, "qqplots_africa"))}
+set.seed(1234)
+N_sel_nb <- 100
+chosen_id_nb <- sample(1:nrow(rds_obj), N_sel_nb, replace=FALSE)
+cts_subset_nb <- cts[chosen_id_nb, ]
+for(i in 1:N_sel_nb){
+  # case samples
+  curr_cts <- cts_subset_nb[i, batch=="Africa" & group=="Progressor"]
+  curr_cts <- curr_cts[curr_cts!=0]
+  if(length(unique(curr_cts)) <= 3 | var(curr_cts)==0){next}
+  df <- data.frame(y=curr_cts)
+  params <- fitdistr(df$y, "negative binomial")$estimate
+  
+  png(paste0(output_dir, "/qqplots_africa/gene", i, "_cases.png"), 
+      width=5, height=5, units="in", res=300)
+  print(ggplot(df, aes(sample=y)) +
+          stat_qq(distribution=qnbinom, dparams=params) + 
+          stat_qq_line(distribution=qnbinom, dparams=params) +
+          labs(title="Q-Q plot: Africa Progressors"))
+  dev.off()
+  rm(curr_cts, df, params)
+  
+  # control samples
+  curr_cts <- cts_subset_nb[i, batch=="Africa" & group=="Non-progressor"]
+  curr_cts <- curr_cts[curr_cts!=0]
+  if(length(unique(curr_cts)) <= 3 | var(curr_cts)==0){next}
+  df <- data.frame(y=curr_cts)
+  params <- fitdistr(df$y, "negative binomial")$estimate
+  
+  png(paste0(output_dir, "/qqplots_africa/gene", i, "_controls.png"), 
+      width=5, height=5, units="in", res=300)
+  print(ggplot(df, aes(sample=y)) +
+          stat_qq(distribution=qnbinom, dparams=params) + 
+          stat_qq_line(distribution=qnbinom, dparams=params) +
+          labs(title="Q-Q plot: Africa Non-progressors"))
+  dev.off()
+}
+```
 
 ## Session info 
 
