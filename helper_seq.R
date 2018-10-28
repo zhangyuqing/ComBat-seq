@@ -26,12 +26,16 @@ match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
   new_counts_sub <- matrix(NA, nrow=nrow(counts_sub), ncol=ncol(counts_sub))
   for(a in 1:nrow(counts_sub)){
     for(b in 1:ncol(counts_sub)){
-      tmp_p <- pnbinom(counts_sub[a, b], mu=old_mu[a, b], size=1/old_phi[a])
-      if(abs(tmp_p-1)<1e-6){
-        new_counts_sub[a,b] <- counts_sub[a, b]  
-        # for outlier count, if p==1, will return Inf values -> use original count instead
+      if(counts_sub[a, b]==0){
+        new_counts_sub[a,b] <- 0
       }else{
-        new_counts_sub[a,b] <- qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+        tmp_p <- pnbinom(counts_sub[a, b], mu=old_mu[a, b], size=1/old_phi[a])
+        if(abs(tmp_p-1)<1e-6){
+          new_counts_sub[a,b] <- counts_sub[a, b]  
+          # for outlier count, if p==1, will return Inf values -> use original count instead
+        }else{
+          new_counts_sub[a,b] <- qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+        }
       }
     }
   }
@@ -59,6 +63,7 @@ search_zin_genes <- function(cts, cut.off=NULL){
   return(zin_genes)
 }
 
+
 ## The following function takes the mean and CV estimates from DESCEND, and calculate dispersion estimates for each gene.
 compute_disp <- function(mean_est, cv_est, zin.opt, zin_genes){  
   disp_est <- rep(NA, length(mean_est))
@@ -75,4 +80,14 @@ compute_disp <- function(mean_est, cv_est, zin.opt, zin_genes){
 meanCV2disp <- function(m, cv){
   disp <- cv^2 - 1/m
   return(disp)
+}
+
+
+## This function is an expansion of edgeR tag-wise dispersion function with additional handling of zeros
+estimateGLMTagwiseDisp_ZIN <- function(curr_cts, curr_design, disp_init, zin_genes){
+  library(edgeR)
+  
+  
+  
+  estimateGLMTagwiseDisp(curr_cts, design=curr_design, dispersion=disp_init, prior.df=0)
 }

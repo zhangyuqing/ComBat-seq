@@ -1,5 +1,5 @@
 rm(list=ls())
-#setwd("~/Google Drive/ComBat_seq/DE_analysis_tmp/")
+#setwd("~/Documents/ComBat_seq/DE_analysis_tmp/")
 setwd("~/yuqingz/ComBat_seq/DE_analysis/")
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 #script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
@@ -80,8 +80,8 @@ for(iter in 1:iterations){
   group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep(1, N_samples[4]))
   
   
-  ####  DE analysis (with edgeR)
-  # On original counts with batch effect
+  ####  DE analysis 
+  # On original counts with batch effect - edgeR
   y1 <- DGEList(counts=counts_matrix)
   y1 <- calcNormFactors(y1, method="TMM")
   design <- model.matrix(~as.factor(group))
@@ -94,8 +94,22 @@ for(iter in 1:iterations){
   tpr1 <- length(intersect(de_called1, de_ground_truth)) / N_DE
   fpr1 <- length(setdiff(de_called1, de_ground_truth)) / N_nonDE
 
-    
-  # On original count - include batch as covariate
+  
+  # On original counts with batch effect - DESeq2
+  y1 <- DGEList(counts=counts_matrix)
+  y1 <- calcNormFactors(y1, method="TMM")
+  design <- model.matrix(~as.factor(group))
+  y1 <- estimateDisp(y1, design)
+  fit1 <- glmQLFit(y1, design)
+  qlf1 <- glmQLFTest(fit1, coef=2)
+  de_res1 <- topTags(qlf1, n=nrow(counts_matrix))$table
+  de_called1 <- rownames(de_res1)[de_res1$PValue < alpha]
+  
+  tpr1 <- length(intersect(de_called1, de_ground_truth)) / N_DE
+  fpr1 <- length(setdiff(de_called1, de_ground_truth)) / N_nonDE
+  
+  
+  # On original count - edgeR + include batch as covariate
   y2 <- DGEList(counts=counts_matrix)
   y2 <- calcNormFactors(y2, method="TMM")
   design2 <- model.matrix(~ as.factor(group) + as.factor(batch))
@@ -108,6 +122,20 @@ for(iter in 1:iterations){
   tpr2 <- length(intersect(de_called2, de_ground_truth)) / N_DE
   fpr2 <- length(setdiff(de_called2, de_ground_truth)) / N_nonDE
     
+  
+  # On original count - DESeq2 + include batch as covariate
+  y2 <- DGEList(counts=counts_matrix)
+  y2 <- calcNormFactors(y2, method="TMM")
+  design2 <- model.matrix(~ as.factor(group) + as.factor(batch))
+  y2 <- estimateDisp(y2, design2)
+  fit2 <- glmQLFit(y2, design2)
+  qlf2 <- glmQLFTest(fit2, coef=2)
+  de_res2 <- topTags(qlf2, n=nrow(counts_matrix))$table
+  de_called2 <- rownames(de_res2)[de_res2$PValue < alpha]
+  
+  tpr2 <- length(intersect(de_called2, de_ground_truth)) / N_DE
+  fpr2 <- length(setdiff(de_called2, de_ground_truth)) / N_nonDE
+  
   
   # On adjusted count - current ComBat + linear model for DE
   log_counts <- cpm(counts_matrix, log=TRUE)  # use logCPM to make data more normal
@@ -151,6 +179,22 @@ for(iter in 1:iterations){
   fpr5 <- length(setdiff(de_called5, de_ground_truth)) / N_nonDE
   
   
+  # On adjusted count - ComBat-seq + DESeq2
+  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
+  
+  y5 <- DGEList(counts=adj_counts_combatseq)
+  y5 <- calcNormFactors(y5, method="TMM")
+  design5 <- model.matrix(~as.factor(group))
+  y5 <- estimateDisp(y5, design5)
+  fit5 <- glmQLFit(y5, design5)
+  qlf5 <- glmQLFTest(fit5, coef=2)
+  de_res5 <- topTags(qlf5, n=nrow(counts_matrix))$table
+  de_called5 <- rownames(de_res5)[de_res5$PValue < alpha]
+  
+  tpr5 <- length(intersect(de_called5, de_ground_truth)) / N_DE
+  fpr5 <- length(setdiff(de_called5, de_ground_truth)) / N_nonDE
+  
+  
   # On adjusted count - ComBat-seq + voom
   design6 <- model.matrix(~as.factor(group))
   v2 <- voom(adj_counts_combatseq, design=design6)
@@ -164,7 +208,8 @@ for(iter in 1:iterations){
     
   
   ####  Collect and output results
-  DE_res <- matrix(c(fpr1, tpr1, fpr2, tpr2, fpr3, tpr3, fpr4, tpr4, fpr5, tpr5, fpr6, tpr6), nrow=2)
+  DE_res <- matrix(c(fpr1, tpr1, fpr2, tpr2, fpr3, tpr3, 
+                     fpr4, tpr4, fpr5, tpr5, fpr6, tpr6), nrow=2)
   colnames(DE_res) <- c("RawCounts.edgeR", "OneStep.edgeR", "ComBat.lm", 
                         "ComBat.voom", "ComBat-seq.edgeR", "ComBat-seq.voom")
   rownames(DE_res) <- c("fpr", "tpr")

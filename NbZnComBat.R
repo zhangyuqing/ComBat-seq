@@ -89,11 +89,16 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){
       # not enough residual degree of freedom
-      return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=NULL, subset=nrow(cts)))
-      #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
+      curr_design <- NULL    
     }else{
-      return(estimateGLMCommonDisp(cts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(cts)))
+      curr_design <- mod[batches_ind[[i]], ]    
     }
+    # use only genes without zeros to estimate common dispersion
+    genes_with_zeros_ind <- apply(cts[, batches_ind[[i]]], 1, function(x){any(x==0)})
+    if(sum(!genes_with_zeros_ind)==0){stop("No gene is complete, not support yet!")}
+    curr_disp <- estimateGLMCommonDisp(cts[!genes_with_zeros_ind, batches_ind[[i]]], design=curr_design, 
+                                       subset=sum(!genes_with_zeros_ind))
+    return(curr_disp)
   })
 
   ## Estimate gene-wise dispersion within each batch
@@ -107,8 +112,13 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
       return(rep(disp_common[j], nrow(cts)))
       #as.matrix(design[batches_ind[[j]], (n_batch+1):ncol(design)]),
     }else{
-      return(estimateGLMTagwiseDisp(cts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ],
-                                    dispersion=disp_common[j], prior.df=0))
+      genewise_disp_seq <- rep(NA, nrow(cts))
+      genes_with_zeros_ind <- apply(cts[, batches_ind[[j]]], 1, function(x){any(x==0)})
+      genewise_disp_seq[!genes_with_zeros_ind] <- estimateGLMTagwiseDisp(cts[!genes_with_zeros_ind, batches_ind[[j]]], 
+                                                                         design=mod[batches_ind[[j]], ], 
+                                                                         dispersion=disp_common[j], prior.df=0)
+      genewise_disp_seq[genes_with_zeros_ind] <- disp_common[j]
+      return(genewise_disp_seq)
     }
   })
   names(genewise_disp_lst) <- paste0('batch', levels(batch))
@@ -141,6 +151,7 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
   
     
   ########  Estimate parameters from NB GLM  ########
+  cat("Fitting Negative Binomial GLM.\n")
   glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(cts))) +   # original offset - sample (library) size
@@ -158,11 +169,12 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
   # handle zeros
   if(zin.opt){
     gamma_hat[zin_genes, ] <- 0
-    phi_hat[zin_genes, ] <- t(vec2mat(colMedians(phi_hat[non_zin_genes, ]), length(zin_genes)))
+    #phi_hat[zin_genes, ] <- t(vec2mat(colMedians(phi_hat[non_zin_genes, ]), length(zin_genes)))
   }
   
   
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
+  cat("Estimating posterior parameters.\n")
   monte_carlo_res <- lapply(1:n_batch, function(ii){
     monte_carlo_int_NB(dat=cts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
                        gamma=gamma_hat[, ii], phi=phi_hat[, ii])
@@ -185,6 +197,7 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
   
   
   ########  Adjust the data  ########  
+  cat("Adjusting the data.\n")
   adjust_cts <- matrix(NA, nrow=nrow(cts), ncol=ncol(cts), dimnames=dimnames(cts))
   for(kk in 1:n_batch){
     cts_sub <- cts[, batches_ind[[kk]]]
@@ -196,6 +209,7 @@ NbZnCombat <- function(cts, batch, group, full_mod=TRUE, zin.opt=TRUE, zero.frac
                                                        old_mu=old_mu, old_phi=old_phi, 
                                                        new_mu=new_mu, new_phi=new_phi)
   }
+  adjust_cts[is.na(adjust_cts)] <- 0
   
   return(adjust_cts)
 }

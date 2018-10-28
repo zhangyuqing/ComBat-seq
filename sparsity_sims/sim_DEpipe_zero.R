@@ -1,8 +1,8 @@
 rm(list=ls())
-# new_wd <- "~/Documents/ComBat_seq/DE_analysis_tmp/"  
-# script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"  
-new_wd <- "~/yuqingz/ComBat_seq/DE_analysis_ZIN/"
-script_dir <- ".."
+new_wd <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
+script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+# new_wd <- "~/yuqingz/ComBat_seq/DE_analysis_ZIN/"
+# script_dir <- ".."
 setwd(new_wd)
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 source(file.path(script_dir, "NbZnCombat.R")); source(file.path(script_dir, "helper_seq.R"))   # load NbZnCombat
@@ -20,7 +20,7 @@ size_2 <- as.numeric(command_args[5])   # 1/dispersion in batch 2 ("Arnold")
 N_total_sample <- as.numeric(command_args[6])  #20  #total number of samples in the study
 balanced <- as.logical(command_args[7])  #TRUE  #logical, if TRUE balanced design
 coverage <- as.numeric(command_args[8])  #20  
-#factor_exam="FC"; bio_fold=2; batch_fold=2; size_1=1/0.1; size_2=1/0.01; N_total_sample=20; balanced=FALSE; coverage=5
+#factor_exam="FC"; bio_fold=2; batch_fold=2; size_1=1/0.1; size_2=1/0.01; N_total_sample=20; balanced=FALSE; coverage=1
 
 prop_gene_partition <- as.numeric(c("0.6", "0.25", "0.15"))  #as.numeric(command_args[9:11])
 if(sum(prop_gene_partition)!=1){stop("Wrong gene partition probability input: must sum to 1!")}
