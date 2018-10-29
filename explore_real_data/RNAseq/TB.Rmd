@@ -552,6 +552,30 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 + We see huge max gene-wise dispersions, possibly caused by 0 counts.
 
 
+### Variance
+
+**Median** gene-wise variance: 
+
+```{r, echo=FALSE}
+var_tb <- matrix(NA, nrow=2, ncol=3, 
+                 dimnames=list(c("Non-progressor", "Progressor"), c("Africa", "G6", "Brazil1")))
+var_tb["Non-progressor", "Africa"] <- median(rowVars(cts[, batch=="Africa"&group=="Non-progressor"]))
+var_tb["Progressor", "Africa"] <- median(rowVars(cts[, batch=="Africa"&group=="Progressor"]))
+var_tb["Non-progressor", "G6"] <- median(rowVars(cts[, batch=="G6"&group=="Non-progressor"]))
+var_tb["Progressor", "G6"] <- median(rowVars(cts[, batch=="G6"&group=="Progressor"]))
+var_tb["Non-progressor", "Brazil1"] <- median(rowVars(cts[, batch=="Brazil_1"&group=="Non-progressor"]))
+var_tb["Progressor", "Brazil1"] <- median(rowVars(cts[, batch=="Brazil_1"&group=="Progressor"]))
+print(round(var_tb, 2))
+```
+
+Scaled by that of Africa:
+
+```{r, echo=FALSE}
+var_tb_scaled <- apply(var_tb, 2, function(x){x/var_tb[,"Africa"]})
+print(round(var_tb_scaled, 2))
+```
+
+
 ## Impact of 0 counts on gene distributions
 
 We have seen above that over half of genes in the dataset contain some portions of zeros. Having 0 counts can have a good impact on mean and dispersion estimation. We evaluate such impact in this section, and see how NB distribution fits to non-zero portion of genes. We first take the non-zero portion of the genes.
@@ -728,6 +752,31 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 + The absolute value of max gene-wise dispersion are reduced after 0 counts are removed.
 + In this report, dispersion are calculated by different methods before and after removing 0 counts. **Not directly comparable.**
 + We show in another analysis (*TB_run_nonzero_disps.R*) that **the difference in dispersion is reduced after removing 0s**.
+
+
+### Variance with 0 counts removed 
+
+**Median** gene-wise variance after removing zeros: 
+
+```{r, echo=FALSE}
+var_tb_rmzero <- matrix(NA, nrow=2, ncol=3, 
+                        dimnames=list(c("Non-progressor", "Progressor"), c("Africa", "G6", "Brazil1")))
+cts_rmzero <- cts; cts_rmzero[cts_rmzero==0] <- NA
+var_tb_rmzero["Non-progressor", "Africa"] <- median(rowVars(cts_rmzero[, batch=="Africa"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Progressor", "Africa"] <- median(rowVars(cts_rmzero[, batch=="Africa"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Non-progressor", "G6"] <- median(rowVars(cts_rmzero[, batch=="G6"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Progressor", "G6"] <- median(rowVars(cts_rmzero[, batch=="G6"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Non-progressor", "Brazil1"] <- median(rowVars(cts_rmzero[, batch=="Brazil_1"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Progressor", "Brazil1"] <- median(rowVars(cts_rmzero[, batch=="Brazil_1"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+print(round(var_tb_rmzero, 2))
+```
+
+Scaled by that of Africa:
+
+```{r, echo=FALSE}
+var_tb_rmzero_scaled <- apply(var_tb_rmzero, 2, function(x){x/var_tb_rmzero[,"Africa"]})
+print(round(var_tb_rmzero_scaled, 2))
+```
 
 
 ### Is there a difference in zero portions across batches?

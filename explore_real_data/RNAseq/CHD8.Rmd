@@ -531,6 +531,28 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 + We see huge gene-wise dispersions, possibly caused by 0 counts.
 
 
+### Variance
+
+**Median** gene-wise variance: 
+
+```{r, echo=FALSE}
+var_tb <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                 dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+var_tb["Controls", "Batch1"] <- median(rowVars(assay(rse_gene,"counts")[, batch==1&group_num==0]))
+var_tb["Controls", "Batch2"] <- median(rowVars(assay(rse_gene,"counts")[, batch==2&group_num==0]))
+var_tb["Cases", "Batch1"] <- median(rowVars(assay(rse_gene,"counts")[, batch==1&group_num==1]))
+var_tb["Cases", "Batch2"] <- median(rowVars(assay(rse_gene,"counts")[, batch==2&group_num==1]))
+print(round(var_tb, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+var_tb_scaled <- apply(var_tb, 2, function(x){x/var_tb[,"Batch1"]})
+print(round(var_tb_scaled, 2))
+```
+
+
 ## Impact of 0 counts on gene distributions
 
 We have seen above that over half of genes in the dataset contain some portions of zeros. Having 0 counts can have a good impact on mean and dispersion estimation. We evaluate such impact in this section, and see how NB distribution fits to non-zero portion of genes. We first take the non-zero portion of the genes.
@@ -704,6 +726,30 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 + The absolute value of dispersion are indeed reduced after 0 counts are removed.
 + In this report, dispersion are calculated by different methods before and after removing 0 counts. **Not directly comparable.**
 + We show in another analysis (*CHD8_run_nonzero_disps.R*) that the relationship between two batch did not change much after removing 0s.
+
+
+### Variance with 0 counts removed 
+
+**Median** gene-wise variance after removing zeros: 
+
+```{r, echo=FALSE}
+var_tb_rmzero <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                        dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+cts_rmzero <- assay(rse_gene,"counts"); cts_rmzero[cts_rmzero==0] <- NA
+var_tb_rmzero["Controls", "Batch1"] <- median(rowVars(cts_rmzero[, batch==1&group_num==0], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Controls", "Batch2"] <- median(rowVars(cts_rmzero[, batch==2&group_num==0], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Cases", "Batch1"] <- median(rowVars(cts_rmzero[, batch==1&group_num==1], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Cases", "Batch2"] <- median(rowVars(cts_rmzero[, batch==2&group_num==1], na.rm=TRUE), na.rm=TRUE)
+print(round(var_tb_rmzero, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+var_tb_rmzero_scaled <- apply(var_tb_rmzero, 2, function(x){x/var_tb_rmzero[,"Batch1"]})
+print(round(var_tb_rmzero_scaled, 2))
+```
+
 
 
 ### Is there a difference in zero portions across batches?

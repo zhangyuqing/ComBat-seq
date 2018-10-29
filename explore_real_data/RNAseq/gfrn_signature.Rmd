@@ -514,6 +514,30 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 + Max mean dispersion difference: Batch 2 is about 2 times of those in Batch 3. 
 
 
+### Variance
+
+**Median** gene-wise variance: 
+
+```{r, echo=FALSE}
+var_tb <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                 dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+var_tb["Controls", "Batch1"] <- median(rowVars(assay(sigdata,"counts")[, batch==1&group=="gfp18"]))
+var_tb["Cases", "Batch1"] <- median(rowVars(assay(sigdata,"counts")[, batch==1&group=="raf"]))
+var_tb["Controls", "Batch2"] <- median(rowVars(assay(sigdata,"counts")[, batch==2&group=="gfp_for_egfr"]))
+var_tb["Cases", "Batch2"] <- median(rowVars(assay(sigdata,"counts")[, batch==2&group=="egfr"]))
+var_tb["Controls", "Batch3"] <- median(rowVars(assay(sigdata,"counts")[, batch==3&group=="gfp30"]))
+var_tb["Cases", "Batch3"] <- median(rowVars(assay(sigdata,"counts")[, batch==3&group=="krasgv"]))
+print(round(var_tb, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+var_tb_scaled <- apply(var_tb, 2, function(x){x/var_tb[,"Batch1"]})
+print(round(var_tb_scaled, 2))
+```
+
+
 ## Impact of 0 counts on gene distributions
 
 We have seen that a lot of genes in the dataset contain some portion of zeros. Having 0 counts can have a great impact on mean and dispersion estimation. We evaluate such impact in this section, and see how NB distribution fits to non-zero portion of genes. We first take the non-zero portion of the genes.
@@ -687,6 +711,31 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 + The absolute value of maximum dispersion are reduced after 0 counts are removed.
 + In this report, dispersion are calculated by different methods before and after removing 0 counts. **Not directly comparable.**
 + We show in another analysis (*gfrnSig_run_nonzero_disps.R*) that the relationship between batches did not change much after removing 0s.
+
+
+### Variance with 0 counts removed 
+
+**Median** gene-wise variance after removing zeros: 
+
+```{r, echo=FALSE}
+var_tb_rmzero <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                        dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+cts_rmzero <- assay(sigdata,"counts"); cts_rmzero[cts_rmzero==0] <- NA
+var_tb_rmzero["Controls", "Batch1"] <- median(rowVars(cts_rmzero[, batch==1&group=="gfp18"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Cases", "Batch1"] <- median(rowVars(cts_rmzero[, batch==1&group=="raf"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Controls", "Batch2"] <- median(rowVars(cts_rmzero[, batch==2&group=="gfp_for_egfr"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Cases", "Batch2"] <- median(rowVars(cts_rmzero[, batch==2&group=="egfr"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Controls", "Batch3"] <- median(rowVars(cts_rmzero[, batch==3&group=="gfp30"], na.rm=TRUE), na.rm=TRUE)
+var_tb_rmzero["Cases", "Batch3"] <- median(rowVars(cts_rmzero[, batch==3&group=="krasgv"], na.rm=TRUE), na.rm=TRUE)
+print(round(var_tb_rmzero, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+var_tb_rmzero_scaled <- apply(var_tb_rmzero, 2, function(x){x/var_tb_rmzero[,"Batch1"]})
+print(round(var_tb_rmzero_scaled, 2))
+```
 
 
 ### Is there a difference in zero portions across batches?
