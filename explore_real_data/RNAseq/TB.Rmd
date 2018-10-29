@@ -494,7 +494,31 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
 + Gene-wise mean batch effect fold change has a wide range (mean 4.4, median 52.6).
 
 
-### Dispersion
+### Batch mean
+
+**Median** gene-wise mean: 
+
+```{r, echo=FALSE}
+mean_tb <- matrix(NA, nrow=2, ncol=3, 
+                 dimnames=list(c("Non-progressor", "Progressor"), c("Africa", "G6", "Brazil1")))
+mean_tb["Non-progressor", "Africa"] <- median(rowMeans(cts[, batch=="Africa"&group=="Non-progressor"]))
+mean_tb["Progressor", "Africa"] <- median(rowMeans(cts[, batch=="Africa"&group=="Progressor"]))
+mean_tb["Non-progressor", "G6"] <- median(rowMeans(cts[, batch=="G6"&group=="Non-progressor"]))
+mean_tb["Progressor", "G6"] <- median(rowMeans(cts[, batch=="G6"&group=="Progressor"]))
+mean_tb["Non-progressor", "Brazil1"] <- median(rowMeans(cts[, batch=="Brazil_1"&group=="Non-progressor"]))
+mean_tb["Progressor", "Brazil1"] <- median(rowMeans(cts[, batch=="Brazil_1"&group=="Progressor"]))
+print(round(mean_tb, 2))
+```
+
+Scaled by that of Africa:
+
+```{r, echo=FALSE}
+mean_tb_scaled <- apply(mean_tb, 2, function(x){x/mean_tb[,"Africa"]})
+print(round(mean_tb_scaled, 2))
+```
+
+
+### Batch dispersion
 
 Aside from average gene counts, we are interested in comparing dispersions in the batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
 
@@ -552,7 +576,7 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 + We see huge max gene-wise dispersions, possibly caused by 0 counts.
 
 
-### Variance
+### Batch variance
 
 **Median** gene-wise variance: 
 
@@ -715,7 +739,32 @@ print(round(median_nonzerocts_mat,1))
 + O counts did not strongly affect mean batch effect in terms of average counts.
 
 
-### Dispersion with 0 counts removed 
+### Batch mean with 0 counts removed 
+
+**Median** gene-wise mean after removing zeros: 
+
+```{r, echo=FALSE}
+mean_tb_rmzero <- matrix(NA, nrow=2, ncol=3, 
+                        dimnames=list(c("Non-progressor", "Progressor"), c("Africa", "G6", "Brazil1")))
+cts_rmzero <- cts; cts_rmzero[cts_rmzero==0] <- NA
+mean_tb_rmzero["Non-progressor", "Africa"] <- median(rowMeans(cts_rmzero[, batch=="Africa"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Progressor", "Africa"] <- median(rowMeans(cts_rmzero[, batch=="Africa"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Non-progressor", "G6"] <- median(rowMeans(cts_rmzero[, batch=="G6"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Progressor", "G6"] <- median(rowMeans(cts_rmzero[, batch=="G6"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Non-progressor", "Brazil1"] <- median(rowMeans(cts_rmzero[, batch=="Brazil_1"&group=="Non-progressor"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Progressor", "Brazil1"] <- median(rowMeans(cts_rmzero[, batch=="Brazil_1"&group=="Progressor"], na.rm=TRUE), na.rm=TRUE)
+print(round(mean_tb_rmzero, 2))
+```
+
+Scaled by that of Africa:
+
+```{r, echo=FALSE}
+mean_tb_rmzero_scaled <- apply(mean_tb_rmzero, 2, function(x){x/mean_tb_rmzero[,"Africa"]})
+print(round(mean_tb_rmzero_scaled, 2))
+```
+
+
+### Batch dispersion with 0 counts removed 
 
 Dispersion estimates are more likely impacted by 0 counts. We re-estimate the dispersions in each batch, using non-zero portion of each gene. Then we compare the dispersion estimates across batches.
 
@@ -754,7 +803,7 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 + We show in another analysis (*TB_run_nonzero_disps.R*) that **the difference in dispersion is reduced after removing 0s**.
 
 
-### Variance with 0 counts removed 
+### Batch variance with 0 counts removed 
 
 **Median** gene-wise variance after removing zeros: 
 

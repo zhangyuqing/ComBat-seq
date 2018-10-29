@@ -468,7 +468,31 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
 + Mean batch effect fold change comparing average counts is quite large. 
 
 
-### Dispersion
+### Batch mean
+
+**Median** gene-wise mean: 
+
+```{r, echo=FALSE}
+mean_tb <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                 dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+mean_tb["Controls", "Batch1"] <- median(rowMeans(assay(sigdata,"counts")[, batch==1&group=="gfp18"]))
+mean_tb["Cases", "Batch1"] <- median(rowMeans(assay(sigdata,"counts")[, batch==1&group=="bad"]))
+mean_tb["Controls", "Batch2"] <- median(rowMeans(assay(sigdata,"counts")[, batch==2&group=="gfp_for_egfr"]))
+mean_tb["Cases", "Batch2"] <- median(rowMeans(assay(sigdata,"counts")[, batch==2&group=="egfr"]))
+mean_tb["Controls", "Batch3"] <- median(rowMeans(assay(sigdata,"counts")[, batch==3&group=="gfp30"]))
+mean_tb["Cases", "Batch3"] <- median(rowMeans(assay(sigdata,"counts")[, batch==3&group=="kraswt"]))
+print(round(mean_tb, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+mean_tb_scaled <- apply(mean_tb, 2, function(x){x/mean_tb[,"Batch1"]})
+print(round(mean_tb_scaled, 2))
+```
+
+
+### Batch dispersion
 
 Aside from average gene counts, we are interested in comparing dispersions in the batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
 
@@ -514,7 +538,7 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 + Max mean dispersion difference: Batch 2 is about 2 times of those in Batch 3. 
 
 
-### Variance
+### Batch variance
 
 **Median** gene-wise variance: 
 
@@ -678,7 +702,32 @@ print(round(median_nonzerocts_mat,1))
 + O counts did not strongly affect mean batch effect in terms of average counts.
 
 
-### Dispersion with 0 counts removed 
+### Batch mean with 0 counts removed 
+
+**Median** gene-wise mean after removing zeros: 
+
+```{r, echo=FALSE}
+mean_tb_rmzero <- matrix(NA, nrow=2, ncol=nlevels(as.factor(batch)), 
+                        dimnames=list(c("Controls", "Cases"), paste0("Batch", levels(as.factor(batch)))))
+cts_rmzero <- assay(sigdata,"counts"); cts_rmzero[cts_rmzero==0] <- NA
+mean_tb_rmzero["Controls", "Batch1"] <- median(rowMeans(cts_rmzero[, batch==1&group=="gfp18"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Cases", "Batch1"] <- median(rowMeans(cts_rmzero[, batch==1&group=="raf"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Controls", "Batch2"] <- median(rowMeans(cts_rmzero[, batch==2&group=="gfp_for_egfr"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Cases", "Batch2"] <- median(rowMeans(cts_rmzero[, batch==2&group=="egfr"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Controls", "Batch3"] <- median(rowMeans(cts_rmzero[, batch==3&group=="gfp30"], na.rm=TRUE), na.rm=TRUE)
+mean_tb_rmzero["Cases", "Batch3"] <- median(rowMeans(cts_rmzero[, batch==3&group=="krasgv"], na.rm=TRUE), na.rm=TRUE)
+print(round(mean_tb_rmzero, 2))
+```
+
+Scaled by that of batch 1:
+
+```{r, echo=FALSE}
+mean_tb_rmzero_scaled <- apply(mean_tb_rmzero, 2, function(x){x/mean_tb_rmzero[,"Batch1"]})
+print(round(mean_tb_rmzero_scaled, 2))
+```
+
+
+### Batch dispersion with 0 counts removed 
 
 Dispersion estimates are more likely impacted by 0 counts. We re-estimate the dispersions in each batch, using non-zero portion of each gene. Then we compare the dispersion estimates across batches.
 
@@ -713,7 +762,7 @@ ggplot(disp_nonzero_df , aes(x=Batch, y=value)) +
 + We show in another analysis (*gfrnSig_run_nonzero_disps.R*) that the relationship between batches did not change much after removing 0s.
 
 
-### Variance with 0 counts removed 
+### Batch variance with 0 counts removed 
 
 **Median** gene-wise variance after removing zeros: 
 
