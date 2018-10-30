@@ -11,126 +11,152 @@ output:
 
 ## About this simulation
 
-From previous analysis (), it appears that ComBat-seq works 
-
+From previous analysis (*"powerdown_unbalanced"*), it appears that ComBat-seq works when there is variance batch effect & when there is some level of confounding between batch and condition (i.e. in unbalanced study design). We dig deeper in these two factors.
 
 ## Setup
+
+* Mean fold changes: Biological - 2, Batch - 1.5 
+* Dispersion: Batch 1 - 0.15, Batch 2 - 0.15***dispersion fold level**
+* Study design: Unbalanced with **different levels of confounding**
+* Reads per gene: Median 120 (coverage 5)
+* Total number of samples: 20
+
+Note that these parameters are consistent with my observations from real datasets. 
+
+Two factors under examination are dispersion fold level and level of confounding. Confounding level is measured by how many percentage of samples in batch 1 is control samples. 2 batches have the same size. Grid for the two factors:
+
+* Dispersion level: 1 (no dispersion difference), 2, 3, 4, 5
+* Confounding: 0.5 (no confounding), 0.4, 0.3, 0.2
+
+```{r, echo=FALSE, results='hide'}
+rm(list=ls())
+sapply(c("ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
+results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_disp_confounding"
+#results_dir <- "~/yuqingz/ComBat_seq/DE_disp_confounding"
+
+disp_level_vec <- 1:5
+confounding_level_vec <- seq(from=0.5,to=0.2,by=-0.1)
+```
 
 <!--
 <img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_4.png" width="425">
 -->
 
-```{r, echo=FALSE, results='hide'}
-sapply(c("knitr", "kableExtra", "ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
-results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_disp_confounding"
-```
 
-## Dispersion differences {.tabset}
+## Dispersion differences only 
 
-### 1 Fold 
+When there is no confounding effect (i.e. balanced design):
 
-No dispersion difference between batches in this case.
-
-
-
-### 2 Fold 
-
-```{r, echo=FALSE, results='hide', fig.width=4, fig.height=4}
-tpr10_file <- "tpr_simnoBatch_bio15_batch1_sizes10_10_N10_U_depth5.csv"
-fpr10_file <- "fpr_simnoBatch_bio15_batch1_sizes10_10_N10_U_depth5.csv"
-tpr20_file <- "tpr_simnoBatch_bio15_batch1_sizes10_10_N20_U_depth5.csv"
-fpr20_file <- "fpr_simnoBatch_bio15_batch1_sizes10_10_N20_U_depth5.csv"
-
-tpr10_res <- read.csv(file.path(results_dir, tpr10_file))
-fpr10_res <- read.csv(file.path(results_dir, fpr10_file))
-tpr20_res <- read.csv(file.path(results_dir, tpr20_file))
-fpr20_res <- read.csv(file.path(results_dir, fpr20_file))
-
-p10_tpr <- ggplot(melt(tpr10_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  labs(x="", y="TPR", title="N=10") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p10_fpr <- ggplot(melt(fpr10_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  geom_hline(yintercept=0.05, col="red") +
-  labs(x="", y="FPR", title="N=10") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p20_tpr <- ggplot(melt(tpr20_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  labs(x="", y="TPR", title="N=20") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p20_fpr <- ggplot(melt(fpr20_res), aes(x=variable, y=value)) +
-  geom_boxplot() +
-  geom_hline(yintercept=0.05, col="red") +
-  labs(x="", y="FPR", title="N=20") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-
-grid.arrange(p10_fpr, p10_tpr, p20_fpr, p20_tpr, ncol=2)
-```
-
-### 3 Fold
-
-### 4 Fold 
-
-### 5 Fold
-
-### 6 Fold 
-
-### 7 Fold 
-
-### 8 Fold 
-
-### 9 Fold 
-
-### 10 Fold 
-
-
-
-## Levels of confounding {.tabset}
-
-### No confounding (50%)
-
-```{r, echo=FALSE, results='hide', message=FALSE, fig.width=4, fig.height=8}
-batch_fold_seq <- c(1, 1.5, 2, 3)
-p_tpr_lst <- p_fpr_lst <- list()
-
-for(i in 1:length(batch_fold_seq)){
-  tpr_file <- sprintf("tpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
-  fpr_file <- sprintf("fpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
-
-  tpr_res <- read.csv(file.path(results_dir, tpr_file))
-  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=10}
+p_tpr <- p_fpr <- list()
+for(i in 1:length(disp_level_vec)){
+  exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[i], "_percent05")
+  tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
+  fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
+  tpr_res <- tpr_res[, c(1:5,7:8)]
+  fpr_res <- fpr_res[, c(1:5,7:8)]
   
-  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+  p_tpr[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
     geom_boxplot() +
-    labs(x="", y="TPR", title=sprintf("Bio FC 1.5, Batch FC %s", batch_fold_seq[i])) +
+    labs(x="", y="TPR", title=paste("Dispersion level", disp_level_vec[i])) +
     theme(axis.text.x=element_text(angle=45, hjust=1))
-  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+  p_fpr[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
     geom_boxplot() +
     geom_hline(yintercept=0.05, col="red") +
-    labs(x="", y="FPR", title=sprintf("Bio FC 1.5, Batch FC %s", batch_fold_seq[i])) +
+    labs(x="", y="FPR", title=paste("Dispersion level", disp_level_vec[i])) +
     theme(axis.text.x=element_text(angle=45, hjust=1))
-  
-  rm(tpr_file, tpr_res, fpr_file, fpr_res)
 }
 
-grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
-             p_fpr_lst[[3]], p_tpr_lst[[3]], p_fpr_lst[[4]], p_tpr_lst[[4]], 
-             ncol=2, widths=rep(2,2), heights=rep(2,4))
-rm(p_fpr_lst, p_tpr_lst, batch_fold_seq)
+grid.arrange(p_fpr[[1]], p_tpr[[1]], p_fpr[[2]], p_tpr[[2]], 
+             p_fpr[[3]], p_tpr[[3]], p_fpr[[4]], p_tpr[[4]],
+             p_fpr[[5]], p_tpr[[5]], ncol=2)
 ```
 
-### 40%
-
-### 30%
-
-### 20%
-
-### 10%
-
-### 5%
 
 
+## Confounding only
+
+When there is no dispersion difference between simulated data:
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=8}
+p_tpr <- p_fpr <- list()
+for(j in 1:length(confounding_level_vec)){
+  exp_name <- paste0("simDispConfound_dispFC1_percent", gsub(".","", confounding_level_vec[j], fixed=T))
+  tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
+  fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
+  tpr_res <- tpr_res[, c(1:5,7:8)]
+  fpr_res <- fpr_res[, c(1:5,7:8)]
+  
+  p_tpr[[j]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=paste("Confounding level", confounding_level_vec[j])) +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  p_fpr[[j]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=paste("Confounding level", confounding_level_vec[j])) +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+}
+
+grid.arrange(p_fpr[[1]], p_tpr[[1]], p_fpr[[2]], p_tpr[[2]], 
+             p_fpr[[3]], p_tpr[[3]], p_fpr[[4]], p_tpr[[4]], ncol=2)
+```
+
+
+
+## Combination of two factors 
+
+### FPR
+
+```{r, echo=FALSE, results='hide', fig.width=7.2, fig.height=9}
+p_tpr <- p_fpr <- list(); k <- 1
+for(i in 1:length(disp_level_vec)){
+  for(j in 1:length(confounding_level_vec)){
+    exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[i],
+                       "_percent", gsub(".","", confounding_level_vec[j], fixed=T))
+    tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
+    fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
+    tpr_res <- tpr_res[, c(1:5,7:8)]
+    fpr_res <- fpr_res[, c(1:5,7:8)]
+    
+    p_tpr[[k]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+      geom_boxplot() +
+      labs(x="", y="TPR", title=paste("Disp:", disp_level_vec[i], "Confounding:", confounding_level_vec[j])) +
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      scale_y_continuous(limits=c(0.4, 1))
+    p_fpr[[k]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+      geom_boxplot() +
+      geom_hline(yintercept=0.05, col="red") +
+      labs(x="", y="FPR", title=paste("Disp:", disp_level_vec[i], "Confounding:", confounding_level_vec[j])) +
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      scale_y_continuous(limits=c(0, 0.1))
+    
+    k <- k + 1
+  }
+}
+
+# grid.arrange(p_fpr[[1]], p_tpr[[1]], p_fpr[[2]], p_tpr[[2]], p_fpr[[3]], p_tpr[[3]], p_fpr[[4]], p_tpr[[4]], 
+#              p_fpr[[5]], p_tpr[[5]], p_fpr[[6]], p_tpr[[6]], p_fpr[[7]], p_tpr[[7]], p_fpr[[8]], p_tpr[[8]], 
+#              p_fpr[[9]], p_tpr[[9]], p_fpr[[10]], p_tpr[[10]], p_fpr[[11]], p_tpr[[11]], p_fpr[[12]], p_tpr[[12]], 
+#              p_fpr[[13]], p_tpr[[13]], p_fpr[[14]], p_tpr[[14]], p_fpr[[15]], p_tpr[[15]], p_fpr[[16]], p_tpr[[16]], 
+#              p_fpr[[17]], p_tpr[[17]], p_fpr[[18]], p_tpr[[18]], p_fpr[[19]], p_tpr[[19]], p_fpr[[20]], p_tpr[[20]], 
+#              ncol=8, nrow=5)
+grid.arrange(p_fpr[[1]], p_fpr[[2]], p_fpr[[3]], p_fpr[[4]], p_fpr[[5]], 
+             p_fpr[[6]], p_fpr[[7]], p_fpr[[8]], p_fpr[[9]], p_fpr[[10]], 
+             p_fpr[[11]], p_fpr[[12]], p_fpr[[13]], p_fpr[[14]], p_fpr[[15]], 
+             p_fpr[[16]], p_fpr[[17]], p_fpr[[18]], p_fpr[[19]], p_fpr[[20]],
+             ncol=4, nrow=5)
+```
+
+### TPR
+
+```{r, echo=FALSE, results='hide', fig.width=7.2, fig.height=9}
+grid.arrange(p_tpr[[1]], p_tpr[[2]], p_tpr[[3]], p_tpr[[4]], p_tpr[[5]], 
+             p_tpr[[6]], p_tpr[[7]], p_tpr[[8]], p_tpr[[9]], p_tpr[[10]], 
+             p_tpr[[11]], p_tpr[[12]], p_tpr[[13]], p_tpr[[14]], p_tpr[[15]], 
+             p_tpr[[16]], p_tpr[[17]], p_tpr[[18]], p_tpr[[19]], p_tpr[[20]],
+             ncol=4, nrow=5)
+```
 
 ## Thoughts & future work
 
