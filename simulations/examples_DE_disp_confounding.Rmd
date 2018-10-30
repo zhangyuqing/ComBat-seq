@@ -17,7 +17,7 @@ From previous analysis (*"powerdown_unbalanced"*), it appears that ComBat-seq wo
 
 * Mean fold changes: Biological - 2, Batch - 1.5 
 * Dispersion: Batch 1 - 0.15, Batch 2 - 0.15***dispersion fold level**
-* Study design: Unbalanced with **different levels of confounding**
+* Study design: **Different levels of confounding**
 * Reads per gene: Median 120 (coverage 5)
 * Total number of samples: 20
 
@@ -30,7 +30,7 @@ Two factors under examination are dispersion fold level and level of confounding
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
-sapply(c("ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
+sapply(c("ggplot2", "gridExtra", "reshape2", "ggpubr"), require, character.only=TRUE)
 results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_disp_confounding"
 #results_dir <- "~/yuqingz/ComBat_seq/DE_disp_confounding"
 
@@ -42,12 +42,13 @@ confounding_level_vec <- seq(from=0.5,to=0.2,by=-0.1)
 <img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_4.png" width="425">
 -->
 
-
+<!--
 ## Dispersion differences only 
 
 When there is no confounding effect (i.e. balanced design):
+-->
 
-```{r, echo=FALSE, results='hide', fig.width=4, fig.height=10}
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.width=4, fig.height=10}
 p_tpr <- p_fpr <- list()
 for(i in 1:length(disp_level_vec)){
   exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[i], "_percent05")
@@ -72,13 +73,13 @@ grid.arrange(p_fpr[[1]], p_tpr[[1]], p_fpr[[2]], p_tpr[[2]],
              p_fpr[[5]], p_tpr[[5]], ncol=2)
 ```
 
-
-
+<!--
 ## Confounding only
 
 When there is no dispersion difference between simulated data:
+-->
 
-```{r, echo=FALSE, results='hide', fig.width=4, fig.height=8}
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.width=4, fig.height=8}
 p_tpr <- p_fpr <- list()
 for(j in 1:length(confounding_level_vec)){
   exp_name <- paste0("simDispConfound_dispFC1_percent", gsub(".","", confounding_level_vec[j], fixed=T))
@@ -102,18 +103,18 @@ grid.arrange(p_fpr[[1]], p_tpr[[1]], p_fpr[[2]], p_tpr[[2]],
              p_fpr[[3]], p_tpr[[3]], p_fpr[[4]], p_tpr[[4]], ncol=2)
 ```
 
-
-
+<!--
 ## Combination of two factors 
 
 ### FPR
+-->
 
-```{r, echo=FALSE, results='hide', fig.width=7.2, fig.height=9}
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.width=6, fig.height=8}
 p_tpr <- p_fpr <- list(); k <- 1
-for(i in 1:length(disp_level_vec)){
-  for(j in 1:length(confounding_level_vec)){
-    exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[i],
-                       "_percent", gsub(".","", confounding_level_vec[j], fixed=T))
+for(i in 1:length(confounding_level_vec)){
+  for(j in 1:length(disp_level_vec)){
+    exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[j],
+                       "_percent", gsub(".","", confounding_level_vec[i], fixed=T))
     tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
     fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
     tpr_res <- tpr_res[, c(1:5,7:8)]
@@ -121,13 +122,13 @@ for(i in 1:length(disp_level_vec)){
     
     p_tpr[[k]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
       geom_boxplot() +
-      labs(x="", y="TPR", title=paste("Disp:", disp_level_vec[i], "Confounding:", confounding_level_vec[j])) +
+      labs(x="", y="TPR", title=paste("D:", disp_level_vec[j], "C:", confounding_level_vec[i])) +
       theme(axis.text.x=element_text(angle=45, hjust=1)) +
       scale_y_continuous(limits=c(0.4, 1))
     p_fpr[[k]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
       geom_boxplot() +
       geom_hline(yintercept=0.05, col="red") +
-      labs(x="", y="FPR", title=paste("Disp:", disp_level_vec[i], "Confounding:", confounding_level_vec[j])) +
+      labs(x="", y="FPR", title=paste("D:", disp_level_vec[j], "C:", confounding_level_vec[i])) +
       theme(axis.text.x=element_text(angle=45, hjust=1)) +
       scale_y_continuous(limits=c(0, 0.1))
     
@@ -145,20 +146,94 @@ grid.arrange(p_fpr[[1]], p_fpr[[2]], p_fpr[[3]], p_fpr[[4]], p_fpr[[5]],
              p_fpr[[6]], p_fpr[[7]], p_fpr[[8]], p_fpr[[9]], p_fpr[[10]], 
              p_fpr[[11]], p_fpr[[12]], p_fpr[[13]], p_fpr[[14]], p_fpr[[15]], 
              p_fpr[[16]], p_fpr[[17]], p_fpr[[18]], p_fpr[[19]], p_fpr[[20]],
-             ncol=4, nrow=5)
+             ncol=5, nrow=4)
 ```
 
+<!--
 ### TPR
+-->
 
-```{r, echo=FALSE, results='hide', fig.width=7.2, fig.height=9}
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.width=6, fig.height=8}
 grid.arrange(p_tpr[[1]], p_tpr[[2]], p_tpr[[3]], p_tpr[[4]], p_tpr[[5]], 
              p_tpr[[6]], p_tpr[[7]], p_tpr[[8]], p_tpr[[9]], p_tpr[[10]], 
              p_tpr[[11]], p_tpr[[12]], p_tpr[[13]], p_tpr[[14]], p_tpr[[15]], 
              p_tpr[[16]], p_tpr[[17]], p_tpr[[18]], p_tpr[[19]], p_tpr[[20]],
-             ncol=4, nrow=5)
+             ncol=5, nrow=4)
+```
+
+
+
+## Results - combination of two factors 
+
+```{r, echo=FALSE, results='hide'}
+fpr_lst <- tpr_lst <- list()
+for(i in 1:length(confounding_level_vec)){
+  fpr_lst[[i]] <- tpr_lst[[i]] <- list()
+  for(j in 1:length(disp_level_vec)){
+    exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[j],
+                       "_percent", gsub(".","", confounding_level_vec[i], fixed=T))
+    tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
+    fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
+    
+    tpr_lst[[i]][[j]] <- as.list(colMeans(tpr_res[, c(1:5,7:8)]))
+    fpr_lst[[i]][[j]]  <- as.list(colMeans(fpr_res[, c(1:5,7:8)]))
+  }
+  names(tpr_lst[[i]]) <- names(fpr_lst[[i]]) <- paste0("Disp", disp_level_vec)
+}
+names(tpr_lst) <- names(fpr_lst) <- paste0("Cnfnd", confounding_level_vec)
+tpr_merged <- melt(tpr_lst); colnames(tpr_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fpr_merged <- melt(fpr_lst); colnames(fpr_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
+
+tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res)[c(1:5,7:8)])
+fpr_merged$Method <- factor(fpr_merged$Method, levels=colnames(fpr_res)[c(1:5,7:8)])
+tpr_merged$Cnfnd <- factor(tpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fpr_merged$Cnfnd <- factor(fpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+```
+
+### Facet by confounding levels
+
+```{r, echo=FALSE}
+p_fpr <- ggplot(fpr_merged, aes(x=Disp, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  #labs(x="Dispersion level increase") +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) 
+  theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+p_tpr <- ggplot(tpr_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  labs(x="Dispersion level increase") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p <- ggarrange(p_fpr, p_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+```
+
+```{r, echo=FALSE, fig.width=5, fig.height=3}
+p
+```
+
+### Facet by dispersion levels
+
+```{r, echo=FALSE}
+p2_fpr <- ggplot(fpr_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  #labs(x="Confounding level increase") +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p2_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  labs(x="Confounding level increase") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p2 <- ggarrange(p2_fpr, p2_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+```
+
+```{r, echo=FALSE, fig.width=5, fig.height=3}
+p2
 ```
 
 ## Thoughts & future work
 
-* Explore real data (signature dataset)
-* Computation time - need to optimize the algorithm?
+* 
