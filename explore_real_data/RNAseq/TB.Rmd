@@ -323,7 +323,7 @@ We use edgeR to perform differential expression analysis, and calculate (log-) f
 
 #### Change WRT condition
 
-To rule out the impact of batch effect, we limit our DE analysis with regard to biological condition in one of the batches. Here we specify the batch to be **G6** due to a larger batch size, and evaluate DE between progressors and non-progressors.
+To rule out the impact of batch effect, we limit our DE analysis with regard to biological condition in one of the batches. Here we specify the batch to be **G6** due to a larger batch size, and evaluate DE **between progressors and non-progressors**.
 
 ```{r, results="hide"}
 ####  Differential genes relative to biological condition 
@@ -406,13 +406,15 @@ rm(cond_batch, counts_batch, up_genes, head_up_genes, tail_up_genes,
 
 **Conclusions:**
 
-+ Biological fold change comparing average counts is about 1.2-1.8. 
-+ Gene-wise fold change has a wide range (median 4, mean 21).
++ Biological fold change comparing average counts **in top DE genes** is about 1.2-1.8. 
++ Gene-wise fold change **in top DE genes** has a wide range (median 4, mean 21).
 
 
 #### Change WRT batch
 
-We are also interested to see how the average (mean) gene counts change across batches (i.e. **degree of mean batch effect**). To explore this mean batch effect, we perform DE with regard to the batch variable. To rule out the impact of biological condition, we perform this analysis within **Non-progressors** only, and compare **Africa & G6 studies**. Note that this DE is not true DE - it's testing if there is a significant mean difference between two batches. 
+We are also interested to see how the average (mean) gene counts change across batches (i.e. **degree of mean batch effect**). 
+
+To explore this mean batch effect, we **first perform DE with regard to the batch variable**. To rule out the impact of biological condition, we perform this analysis within **Non-progressors** only, and compare **Africa & G6 studies**. Note that this DE is not true DE - it's testing if there is a significant mean difference between two batches. 
 
 ```{r, results="hide"}
 ####  Differential genes relative to batch 
@@ -490,13 +492,13 @@ rm(batch_cond, counts_cond, up_genes, head_up_genes, tail_up_genes,
 
 **Conclusions:**
 
-+ Mean batch effect fold change comparing average counts ranges from 1.18-3.56. 
-+ Gene-wise mean batch effect fold change has a wide range (mean 4.4, median 52.6).
++ Mean batch effect fold change comparing average counts **in top genes** ranges from 1.18-3.56. **Remember that these are genes most significantly different across batch**.
++ Gene-wise mean batch effect fold change **in top genes** has a wide range (mean 4.4, median 52.6).
 
 
 ### Batch mean
 
-**Median** gene-wise mean: 
+**Median (of all genes)** gene-wise mean: 
 
 ```{r, echo=FALSE}
 mean_tb <- matrix(NA, nrow=2, ncol=3, 
@@ -520,7 +522,7 @@ print(round(mean_tb_scaled, 2))
 
 ### Batch dispersion
 
-Aside from average gene counts, we are interested in comparing dispersions in the batches. **Difference in the dispersions across batches suggests variance batch effect**. We visualize the gene-wise dispersion estimates from edgeR:
+Aside from average gene counts, we are interested in comparing dispersions in the batches. **Difference in the dispersions across batches suggests variance batch effect not accounted for by Poisson model**. We visualize the gene-wise dispersion estimates from edgeR:
 
 ```{r, echo=FALSE}
 ####  Dispersion differences across batches 
@@ -578,7 +580,7 @@ ggplot(disp_df_mlt, aes(x=variable, y=value)) +
 
 ### Batch variance
 
-**Median** gene-wise variance: 
+**Median (of all genes)** gene-wise variance: 
 
 ```{r, echo=FALSE}
 var_tb <- matrix(NA, nrow=2, ncol=3, 
@@ -676,13 +678,13 @@ print(round(median_nonzerocts_mat,1))
 
 **Conclusions: ** 
 
-+ Biological fold change (in non-zero portion) comparing average counts is about 1.2-1.8 (mean).
-+ O counts did not strongly affect biological signal in terms of average counts.
++ Biological fold change (in non-zero portion) comparing average counts **in top genes** is about 1.2-1.8 (mean).
++ O counts did not strongly affect biological signal in terms of average counts **in top genes** .
 
 
 ####  Change WRT batch in non-progressors
 
-Similarly, we compare non-zero mean across batches within "Non-progressors" of Africa and G6 studies.
+Similarly, we compare non-zero mean **in top genes** across batches within "Non-progressors" of Africa and G6 studies. Here “top genes” refer to top gene lists from previous DE within control samples comparing batches.
 
 ```{r, echo=FALSE}
 # take controls
@@ -735,13 +737,13 @@ print(round(median_nonzerocts_mat,1))
 
 **Conclusions:** 
 
-+ Mean batch effect fold change (non-zero portion) comparing average counts ranges from 1.16-3.3 (mean). 
-+ O counts did not strongly affect mean batch effect in terms of average counts.
++ Mean batch effect fold change (non-zero portion) comparing average counts **in top genes** ranges from 1.16-3.3 (mean). 
++ O counts did not strongly affect mean batch effect in terms of average counts **in top genes**.
 
 
 ### Batch mean with 0 counts removed 
 
-**Median** gene-wise mean after removing zeros: 
+**Median (of all genes)** gene-wise mean after removing zeros: 
 
 ```{r, echo=FALSE}
 mean_tb_rmzero <- matrix(NA, nrow=2, ncol=3, 
