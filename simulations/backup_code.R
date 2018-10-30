@@ -196,8 +196,3 @@ save(counts, group, batch,
      phi_true, gamma_true, alpha_true, beta_true, lambda_true, lib_size_true, 
      file="simdata.RData")
 
-
-
-
-
-

@@ -1,8 +1,10 @@
 rm(list=ls())
-wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
-script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
-# wdir <- "~/yuqingz/ComBat_seq/DE_analysis/"
-# script_dir <- ".."
+# wdir <- "/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_disp_confounding"
+# script_dir <- "/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_disp_confounding/scripts"
+# wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
+# script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+wdir <- "~/yuqingz/ComBat_seq/DE_disp_confounding/"
+script_dir <- ".."
 setwd(wdir)
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
@@ -11,20 +13,23 @@ set.seed(123)
 
 ####  Parameters
 command_args <- commandArgs(trailingOnly=TRUE)
-factor_exam <- command_args[1]  # "FC", "Disp", "Design", "Nsample", "BaseCts"  #the factor in examination in this sim
-bio_fold <- as.numeric(command_args[2])  #2  #fold change for biological condition
-batch_fold <- as.numeric(command_args[3])  #3  #fold change for batch effect - assuming that batch behaves as fold change on counts
-size_1 <- as.numeric(command_args[4])   # 1/dispersion in batch 1 ("Bernard")
-size_2 <- as.numeric(command_args[5])   # 1/dispersion in batch 2 ("Arnold")
-N_total_sample <- as.numeric(command_args[6])  #20  #total number of samples in the study
-balanced <- as.logical(command_args[7])  #TRUE  #logical, if TRUE balanced design
-coverage <- as.numeric(command_args[8])  #20  
-#factor_exam="Demo"; bio_fold=1.5; batch_fold=2; size_1=1/0.1; size_2=1/0.1; N_total_sample=20; balanced=TRUE; coverage=5
-  
+disp_fold_level <- as.numeric(command_args[1])  # dispersion of batch 2 is how many times that of batch 1, 1-10
+confounding_level <- as.numeric(command_args[2])  # level of confounding, 0-0.5
+#disp_fold_level <- 3; confounding_level <- 0.2
+factor_exam <- "DispConfound"  #command_args[1]  
+bio_fold <- 2  #as.numeric(command_args[2])  
+batch_fold <- 1.5  #as.numeric(command_args[3])  
+size_1 <- 1/0.15  #as.numeric(command_args[4])  # 1/dispersion in batch 1 
+size_2 <- 1/(0.15*disp_fold_level)  #as.numeric(command_args[5])   # 1/dispersion in batch 2 
+N_total_sample <- 20  #as.numeric(command_args[6])  
+balanced <- FALSE  #as.logical(command_args[7]) 
+coverage <- 5 #as.numeric(command_args[8])  
+
 iterations <- 100 #5  #number of simulations to run
 alpha <- 0.05
-exp_name <- paste0("sim", factor_exam, "_bio", bio_fold, "_batch", batch_fold, "_sizes", size_1, '_', size_2,
-                   "_N", N_total_sample, ifelse(balanced, "_B", "_U"), "_depth", coverage)
+# exp_name <- paste0("sim", factor_exam, "_bio", bio_fold, "_batch", batch_fold, "_sizes", size_1, '_', size_2,
+#                    "_N", N_total_sample, ifelse(balanced, "_B", "_U"), "_depth", coverage)
+exp_name <- paste0("sim", factor_exam, "_dispFC", disp_fold_level, "_percent", confounding_level)
 exp_name <- gsub('.', '', exp_name, fixed=TRUE)
 
 # FASTA annotation
@@ -42,8 +47,9 @@ if(balanced & N_total_sample==10){
 }else if(balanced){
   N_samples <- rep(N_total_sample/4, 4)
 }else{
-  N_samples <- N_total_sample * c(0.1, 0.4, 0.4, 0.1)  #  20%-80% unbalanced
+  N_samples <- N_total_sample*(c(confounding_level, 1-confounding_level, 1-confounding_level, confounding_level)/2) 
 }
+if(sum(N_samples)!=N_total_sample){stop("ERROR in Nsamples!")}
 
 fold_changes <- matrix(NA, nrow=length(fasta), ncol=length(N_samples))  
 fold_changes[1:50, ] <- matrix(rep(c(1, bio_fold, batch_fold, bio_fold*batch_fold), 50),
@@ -63,6 +69,7 @@ N_nonDE <- length(fasta) - N_DE
 
 
 ####  Run pipeline
+cts_list <- list()
 for(iter in 1:iterations){
   cat(paste("\nSimulation", iter, '\n'))
   
@@ -107,7 +114,6 @@ for(iter in 1:iterations){
   dds <- DESeq(dds)
   de_res1_deseq <- results(dds, name="Group_1_vs_0")
   de_called1_deseq <- rownames(de_res1_deseq)[de_res1_deseq$pvalue < alpha]
-  de_called1_deseq <- de_called1_deseq[!is.na(de_called1_deseq)]
   
   tpr1_deseq <- length(intersect(de_called1_deseq, de_ground_truth)) / N_DE
   fpr1_deseq <- length(setdiff(de_called1_deseq, de_ground_truth)) / N_nonDE
@@ -134,7 +140,6 @@ for(iter in 1:iterations){
   dds2 <- DESeq(dds2)
   de_res2_deseq <- results(dds2, name="Group_1_vs_0")
   de_called2_deseq <- rownames(de_res2_deseq)[de_res2_deseq$pvalue < alpha]
-  de_called2_deseq <- de_called2_deseq[!is.na(de_called2_deseq)]
   
   tpr2_deseq <- length(intersect(de_called2_deseq, de_ground_truth)) / N_DE
   fpr2_deseq <- length(setdiff(de_called2_deseq, de_ground_truth)) / N_nonDE
@@ -154,7 +159,7 @@ for(iter in 1:iterations){
   fpr3 <- length(setdiff(de_called3, de_ground_truth)) / N_nonDE
   
   
-  # On adjusted count - current ComBat + voom
+  # On adjusted count - current ComBat + voom (you shouldn't use voom this way)
   design4 <- model.matrix(~as.factor(group))
   v <- voom(adj_counts, design=design4)
   fit4 <- lmFit(v, design4)
@@ -189,7 +194,6 @@ for(iter in 1:iterations){
   dds5 <- DESeq(dds5)
   de_res5_deseq <- results(dds5, name="Group_1_vs_0")
   de_called5_deseq <- rownames(de_res5_deseq)[de_res5_deseq$pvalue < alpha]
-  de_called5_deseq <- de_called5_deseq[!is.na(de_called5_deseq)]
   
   tpr5_deseq <- length(intersect(de_called5_deseq, de_ground_truth)) / N_DE
   fpr5_deseq <- length(setdiff(de_called5_deseq, de_ground_truth)) / N_nonDE
@@ -223,4 +227,9 @@ for(iter in 1:iterations){
   # power (true positive rate)
   write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name), 
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",")
+  
+  cts_list[[iter]] <- counts_matrix
+  rm(counts_matrix)
 }
+
+save(cts_list, N_samples, file=sprintf('data_%s.RData', exp_name))

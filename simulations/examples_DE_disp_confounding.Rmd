@@ -1,0 +1,138 @@
+---
+title: "Application of ComBat-seq on simulated datasets"
+subtitle: "Levels of dispersion differences and confounding"
+author: Yuqing Zhang
+date: "`r Sys.Date()`"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+---
+
+## About this simulation
+
+From previous analysis (), it appears that ComBat-seq works 
+
+
+## Setup
+
+<!--
+<img src="/Users/yuqingz/Dropbox/Work/ComBat_Seq/study_design_4.png" width="425">
+-->
+
+```{r, echo=FALSE, results='hide'}
+sapply(c("knitr", "kableExtra", "ggplot2", "gridExtra", "reshape2"), require, character.only=TRUE)
+results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_disp_confounding"
+```
+
+## Dispersion differences {.tabset}
+
+### 1 Fold 
+
+No dispersion difference between batches in this case.
+
+
+
+### 2 Fold 
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=4}
+tpr10_file <- "tpr_simnoBatch_bio15_batch1_sizes10_10_N10_U_depth5.csv"
+fpr10_file <- "fpr_simnoBatch_bio15_batch1_sizes10_10_N10_U_depth5.csv"
+tpr20_file <- "tpr_simnoBatch_bio15_batch1_sizes10_10_N20_U_depth5.csv"
+fpr20_file <- "fpr_simnoBatch_bio15_batch1_sizes10_10_N20_U_depth5.csv"
+
+tpr10_res <- read.csv(file.path(results_dir, tpr10_file))
+fpr10_res <- read.csv(file.path(results_dir, fpr10_file))
+tpr20_res <- read.csv(file.path(results_dir, tpr20_file))
+fpr20_res <- read.csv(file.path(results_dir, fpr20_file))
+
+p10_tpr <- ggplot(melt(tpr10_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(x="", y="TPR", title="N=10") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p10_fpr <- ggplot(melt(fpr10_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  geom_hline(yintercept=0.05, col="red") +
+  labs(x="", y="FPR", title="N=10") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p20_tpr <- ggplot(melt(tpr20_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  labs(x="", y="TPR", title="N=20") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p20_fpr <- ggplot(melt(fpr20_res), aes(x=variable, y=value)) +
+  geom_boxplot() +
+  geom_hline(yintercept=0.05, col="red") +
+  labs(x="", y="FPR", title="N=20") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+grid.arrange(p10_fpr, p10_tpr, p20_fpr, p20_tpr, ncol=2)
+```
+
+### 3 Fold
+
+### 4 Fold 
+
+### 5 Fold
+
+### 6 Fold 
+
+### 7 Fold 
+
+### 8 Fold 
+
+### 9 Fold 
+
+### 10 Fold 
+
+
+
+## Levels of confounding {.tabset}
+
+### No confounding (50%)
+
+```{r, echo=FALSE, results='hide', message=FALSE, fig.width=4, fig.height=8}
+batch_fold_seq <- c(1, 1.5, 2, 3)
+p_tpr_lst <- p_fpr_lst <- list()
+
+for(i in 1:length(batch_fold_seq)){
+  tpr_file <- sprintf("tpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+  fpr_file <- sprintf("fpr_simFC_bio15_batch%s_sizes100_10_N10_U_depth5.csv", gsub('.', '', batch_fold_seq[i], fixed=TRUE))
+
+  tpr_res <- read.csv(file.path(results_dir, tpr_file))
+  fpr_res <- read.csv(file.path(results_dir, fpr_file))
+  
+  p_tpr_lst[[i]] <- ggplot(melt(tpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    labs(x="", y="TPR", title=sprintf("Bio FC 1.5, Batch FC %s", batch_fold_seq[i])) +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  p_fpr_lst[[i]] <- ggplot(melt(fpr_res), aes(x=variable, y=value)) +
+    geom_boxplot() +
+    geom_hline(yintercept=0.05, col="red") +
+    labs(x="", y="FPR", title=sprintf("Bio FC 1.5, Batch FC %s", batch_fold_seq[i])) +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  
+  rm(tpr_file, tpr_res, fpr_file, fpr_res)
+}
+
+grid.arrange(p_fpr_lst[[1]], p_tpr_lst[[1]], p_fpr_lst[[2]], p_tpr_lst[[2]],
+             p_fpr_lst[[3]], p_tpr_lst[[3]], p_fpr_lst[[4]], p_tpr_lst[[4]], 
+             ncol=2, widths=rep(2,2), heights=rep(2,4))
+rm(p_fpr_lst, p_tpr_lst, batch_fold_seq)
+```
+
+### 40%
+
+### 30%
+
+### 20%
+
+### 10%
+
+### 5%
+
+
+
+## Thoughts & future work
+
+* Explore real data (signature dataset)
+* Computation time - need to optimize the algorithm?
