@@ -1,13 +1,12 @@
 rm(list=ls())
-# wdir <- "/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_disp_confounding"
-# script_dir <- "/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_disp_confounding/scripts"
 # wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
 # script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
-wdir <- "~/yuqingz/ComBat_seq/DE_disp_confounding/"
+wdir <- "~/yuqingz/ComBat_seq/DE_disp_confounding_base/"
 script_dir <- ".."
 setwd(wdir)
-sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
+sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva", "RUVSeq", "MASS"), require, character.only=TRUE)
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
+source(file.path(script_dir, "sim_DEpipe_helpers.R"))
 set.seed(123)
 
 
@@ -15,8 +14,8 @@ set.seed(123)
 command_args <- commandArgs(trailingOnly=TRUE)
 disp_fold_level <- as.numeric(command_args[1])  # dispersion of batch 2 is how many times that of batch 1, 1-10
 confounding_level <- as.numeric(command_args[2])  # level of confounding, 0-0.5
-#disp_fold_level <- 3; confounding_level <- 0.2
-factor_exam <- "DispConfound"  #command_args[1]  
+#disp_fold_level <- 3; confounding_level <- 0.4
+factor_exam <- "DCbase"  #command_args[1]  
 bio_fold <- 2  #as.numeric(command_args[2])  
 batch_fold <- 1.5  #as.numeric(command_args[3])  
 size_1 <- 1/0.15  #as.numeric(command_args[4])  # 1/dispersion in batch 1 
@@ -36,8 +35,6 @@ exp_name <- gsub('.', '', exp_name, fixed=TRUE)
 read_length <- 100
 fasta_file <- system.file('extdata', 'chr22.fa', package='polyester')
 fasta <- readDNAStringSet(fasta_file)
-# subset the FASTA file to first N_genes transcripts
-#writeXStringSet(small_fasta, 'chr22_small.fa')
 # reads per transcript = transcriptlength/readlength * coverage
 readspertx <- round(coverage * width(fasta) / read_length)
 
@@ -51,196 +48,170 @@ if(balanced & N_total_sample==10){
 }
 if(sum(N_samples)!=N_total_sample){stop("ERROR in Nsamples!")}
 
-fold_changes <- matrix(NA, nrow=length(fasta), ncol=length(N_samples))  
-fold_changes[1:50, ] <- matrix(rep(c(1, bio_fold, batch_fold, bio_fold*batch_fold), 50),
-                               ncol=length(N_samples), byrow=TRUE)  # up-regulated
-fold_changes[51:100, ] <- matrix(rep(c(bio_fold, 1, bio_fold*batch_fold, batch_fold), 50),
-                                 ncol=length(N_samples), byrow=TRUE)  # down-regulated
-fold_changes[101:length(fasta), ] <- matrix(rep(c(1, 1, batch_fold, batch_fold), length(fasta)-100),
-                                            ncol=length(N_samples), byrow=TRUE)   # "null" genes
+#batch & biological vectors
+batch <- c(rep(1, sum(N_samples[1:2])), rep(2, sum(N_samples[3:4])))
+group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep(1, N_samples[4]))
 
-size_mat <- matrix(rep(c(size_1, size_1, size_2, size_2), length(fasta)),
-                   ncol=length(N_samples), byrow=TRUE)
 #for baseline datasets without batch effect
-fold_changes_base <- matrix(NA, nrow=length(fasta), ncol=length(N_samples))  
-size_mat_base <- matrix(rep(c(size_1, size_1, size_1, size_1), length(fasta)),
-                        ncol=length(N_samples), byrow=TRUE)
+fold_changes_base <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=1:50, G_downs=51:100, bioFC=bio_fold, batchFC=1)
+size_mat_base <- constructSizeMatrix(G=length(fasta), size_vec=c(size_1, size_1, size_1, size_1))
+#for data with batch effect
+fold_changes <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=1:50, G_downs=51:100, bioFC=bio_fold, batchFC=batch_fold)
+size_mat <- constructSizeMatrix(G=length(fasta), size_vec=c(size_1, size_1, size_2, size_2))
   
-#de_ground_truth_ind <- c(1:50, 451:500)  # true differentially expressed genes
+# DE
 de_ground_truth_ind <- 1:100
 N_DE <- length(de_ground_truth_ind)
 N_nonDE <- length(fasta) - N_DE
 
 
 ####  Run pipeline
-cts_list <- list()
 for(iter in 1:iterations){
   cat(paste("\nSimulation", iter, '\n'))
+  if(dir.exists(exp_name)){unlink(exp_name, recursive=TRUE)}
   
   ####  Simulate datasets
-  if(dir.exists(exp_name)){unlink(exp_name, recursive=TRUE)}
-  ## baseline (no batch effect)
+  ## simulate data with batch effect
   simulate_experiment(fasta_file, reads_per_transcript=readspertx, size=size_mat, 
                       num_reps=N_samples, fold_changes=fold_changes, outdir=exp_name) 
   #remove fasta files to save space
   f_rm <- file.remove(file.path(exp_name, dir(exp_name)[grep(".fasta", dir(exp_name))]))
   if(!all(f_rm)){warning("Something went wrong when deleting fasta files.")}
+  #load count matrix and remove fastq files to save space
+  load(file.path(exp_name, "sim_counts_matrix.rda"))
+  cts <- counts_matrix; rm(counts_matrix)
+  rownames(cts) <- paste0("gene", 1:nrow(cts))
+  #DE ground truth vectors
+  de_ground_truth <- rownames(cts)[de_ground_truth_ind]
   
-  ## batch counts
-  simulate_experiment(fasta_file, reads_per_transcript=readspertx, size=size_mat, 
-                      num_reps=N_samples, fold_changes=fold_changes, outdir=exp_name) 
+  ## simulate baseline (no batch effect) data - independently using theoretical values for parameters
+  simulate_experiment(fasta_file, reads_per_transcript=readspertx, size=size_mat_base, 
+                      num_reps=N_samples, fold_changes=fold_changes_base, outdir=exp_name) 
+  #remove fasta files to save space
   f_rm <- file.remove(file.path(exp_name, dir(exp_name)[grep(".fasta", dir(exp_name))]))
   if(!all(f_rm)){warning("Something went wrong when deleting fasta files.")}
-  
-  # load count matrix and remove fastq files to save space
+  #load count matrix and remove fastq files to save space
   load(file.path(exp_name, "sim_counts_matrix.rda"))
-  rownames(counts_matrix) <- paste0("gene", 1:nrow(counts_matrix))
-  de_ground_truth <- rownames(counts_matrix)[de_ground_truth_ind]
+  counts_base_indi <- counts_matrix; rm(counts_matrix)
+  rownames(counts_base_indi) <- paste0("gene", 1:nrow(counts_base_indi))
   
-  # batch and biological vectors
-  batch <- c(rep(1, sum(N_samples[1:2])), rep(2, sum(N_samples[3:4])))
-  group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep(1, N_samples[4]))
-  
+  ## simulate baseline (no batch effect) data - match quantiles
+  fc_batch <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=1:50, G_downs=51:100, bioFC=1, batchFC=batch_fold)
+  fc_batch_mat <- constructFCSampleMatrix(fc_batch, batch=batch, group=group)
+  cts_meanadj <- round(cts/fc_batch_mat)
+  counts_base_quant <- try(quantDisp(cts_meanadj, batch=batch, group=group, DE_ind=de_ground_truth_ind))
   
   
   ####  DE analysis 
-  # On original counts with batch effect - edgeR
-  y1 <- DGEList(counts=counts_matrix)
-  y1 <- calcNormFactors(y1, method="TMM")
-  design <- model.matrix(~as.factor(group))
-  y1 <- estimateDisp(y1, design)
-  fit1 <- glmQLFit(y1, design)
-  qlf1 <- glmQLFTest(fit1, coef=2)
-  de_res1 <- topTags(qlf1, n=nrow(counts_matrix))$table
-  de_called1 <- rownames(de_res1)[de_res1$PValue < alpha]
+  ## On baseline dataset without batch effect - independent baseline 
+  # edgeR
+  de_called01 <- edgeR_DEpipe(counts_mat=counts_base_indi, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
+  tpr01 <- length(intersect(de_called01, de_ground_truth)) / N_DE
+  fpr01 <- length(setdiff(de_called01, de_ground_truth)) / N_nonDE
+  # DESeq2
+  de_called01_deseq <- DESeq2_DEpipe(counts_mat=counts_base_indi, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
+  tpr01_deseq <- length(intersect(de_called01_deseq, de_ground_truth)) / N_DE
+  fpr01_deseq <- length(setdiff(de_called01_deseq, de_ground_truth)) / N_nonDE
   
+  ## On baseline dataset without batch effect - quantile baseline 
+  if(class(counts_base_quant)!="try-error"){
+    # edgeR
+    de_called02 <- edgeR_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
+    tpr02 <- length(intersect(de_called02, de_ground_truth)) / N_DE
+    fpr02 <- length(setdiff(de_called02, de_ground_truth)) / N_nonDE
+    # DESeq2
+    de_called02_deseq <- DESeq2_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
+    tpr02_deseq <- length(intersect(de_called02_deseq, de_ground_truth)) / N_DE
+    fpr02_deseq <- length(setdiff(de_called02_deseq, de_ground_truth)) / N_nonDE
+  }else{tpr02 <- fpr02 <- tpr02_deseq <- fpr02_deseq <- NA}
+  
+  ## On counts with batch effect 
+  # edgeR
+  de_called1 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
   tpr1 <- length(intersect(de_called1, de_ground_truth)) / N_DE
   fpr1 <- length(setdiff(de_called1, de_ground_truth)) / N_nonDE
-
-  
-  # On original counts with batch effect - DESeq2
-  dds <- DESeqDataSetFromMatrix(countData=counts_matrix,
-                                colData=data.frame(Group=as.factor(group)),
-                                design=~Group)
-  dds <- DESeq(dds)
-  de_res1_deseq <- results(dds, name="Group_1_vs_0")
-  de_called1_deseq <- rownames(de_res1_deseq)[de_res1_deseq$pvalue < alpha]
-  
+  # DESeq2
+  de_called1_deseq <- DESeq2_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
   tpr1_deseq <- length(intersect(de_called1_deseq, de_ground_truth)) / N_DE
   fpr1_deseq <- length(setdiff(de_called1_deseq, de_ground_truth)) / N_nonDE
   
-  
-  # On original count - edgeR + include batch as covariate
-  y2 <- DGEList(counts=counts_matrix)
-  y2 <- calcNormFactors(y2, method="TMM")
-  design2 <- model.matrix(~ as.factor(group) + as.factor(batch))
-  y2 <- estimateDisp(y2, design2)
-  fit2 <- glmQLFit(y2, design2)
-  qlf2 <- glmQLFTest(fit2, coef=2)
-  de_res2 <- topTags(qlf2, n=nrow(counts_matrix))$table
-  de_called2 <- rownames(de_res2)[de_res2$PValue < alpha]
-  
+  ## One-step - include batch as covariate
+  # edgeR
+  de_called2 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=TRUE, alpha=alpha)  
   tpr2 <- length(intersect(de_called2, de_ground_truth)) / N_DE
   fpr2 <- length(setdiff(de_called2, de_ground_truth)) / N_nonDE
-    
-  
-  # On original count - DESeq2 + include batch as covariate
-  dds2 <- DESeqDataSetFromMatrix(countData=counts_matrix,
-                                 colData=data.frame(Batch=as.factor(batch), Group=as.factor(group)),
-                                 design=~Batch+Group)
-  dds2 <- DESeq(dds2)
-  de_res2_deseq <- results(dds2, name="Group_1_vs_0")
-  de_called2_deseq <- rownames(de_res2_deseq)[de_res2_deseq$pvalue < alpha]
-  
+  # DESeq2
+  de_called2_deseq <- DESeq2_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=TRUE, alpha=alpha)
   tpr2_deseq <- length(intersect(de_called2_deseq, de_ground_truth)) / N_DE
   fpr2_deseq <- length(setdiff(de_called2_deseq, de_ground_truth)) / N_nonDE
   
-  
-  # On adjusted count - current ComBat + linear model for DE
-  log_counts <- cpm(counts_matrix, log=TRUE)  # use logCPM to make data more normal
+  ## Current ComBat + linear model for DE
+  log_counts <- cpm(cts, log=TRUE)  # use logCPM to make data more normal
   adj_counts <- ComBat(log_counts, batch=batch, mod=model.matrix(~as.factor(group)))
   pval_seq <- apply(adj_counts, 1, function(x, group){
     x_norm <- scale(x, center=TRUE, scale=TRUE)
     fit3 <- lm(x_norm ~ as.factor(group))
     return(summary(fit3)$coefficients[2, 4])
   }, group=group)
-  de_called3 <- rownames(counts_matrix)[pval_seq < alpha]
-  
+  de_called3 <- rownames(cts)[pval_seq < alpha]
   tpr3 <- length(intersect(de_called3, de_ground_truth)) / N_DE
   fpr3 <- length(setdiff(de_called3, de_ground_truth)) / N_nonDE
-  
-  
-  # On adjusted count - current ComBat + voom (you shouldn't use voom this way)
-  design4 <- model.matrix(~as.factor(group))
-  v <- voom(adj_counts, design=design4)
-  fit4 <- lmFit(v, design4)
-  fit4 <- eBayes(fit4)
-  de_res4 <- topTable(fit4, coef=2, number=nrow(counts_matrix))
-  de_called4 <- rownames(de_res4)[de_res4$P.Value < alpha]
-  
-  tpr4 <- length(intersect(de_called4, de_ground_truth)) / N_DE
-  fpr4 <- length(setdiff(de_called4, de_ground_truth)) / N_nonDE
-  
-  
-  # On adjusted count - ComBat-seq + edgeR
-  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
-  
-  y5 <- DGEList(counts=adj_counts_combatseq)
-  y5 <- calcNormFactors(y5, method="TMM")
-  design5 <- model.matrix(~as.factor(group))
-  y5 <- estimateDisp(y5, design5)
-  fit5 <- glmQLFit(y5, design5)
-  qlf5 <- glmQLFTest(fit5, coef=2)
-  de_res5 <- topTags(qlf5, n=nrow(counts_matrix))$table
-  de_called5 <- rownames(de_res5)[de_res5$PValue < alpha]
-  
+
+  ## On adjusted count - ComBat-seq 
+  adj_counts_combatseq <- ComBat_seq(counts=cts, batch=batch, group=group)
+  # edgeR
+  de_called5 <- edgeR_DEpipe(counts_mat=adj_counts_combatseq, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
   tpr5 <- length(intersect(de_called5, de_ground_truth)) / N_DE
   fpr5 <- length(setdiff(de_called5, de_ground_truth)) / N_nonDE
-  
-  
-  # On adjusted count - ComBat-seq + DESeq2
-  dds5 <- DESeqDataSetFromMatrix(countData=adj_counts_combatseq,
-                                 colData=data.frame(Group=as.factor(group)),
-                                 design=~Group)
-  dds5 <- DESeq(dds5)
-  de_res5_deseq <- results(dds5, name="Group_1_vs_0")
-  de_called5_deseq <- rownames(de_res5_deseq)[de_res5_deseq$pvalue < alpha]
-  
+  # DESeq2
+  de_called5_deseq <- DESeq2_DEpipe(counts_mat=adj_counts_combatseq, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
   tpr5_deseq <- length(intersect(de_called5_deseq, de_ground_truth)) / N_DE
   fpr5_deseq <- length(setdiff(de_called5_deseq, de_ground_truth)) / N_nonDE
   
-  
-  # On adjusted count - ComBat-seq + voom
-  design6 <- model.matrix(~as.factor(group))
-  v2 <- voom(adj_counts_combatseq, design=design6)
-  fit6 <- lmFit(v2, design6)
-  fit6 <- eBayes(fit6)
-  de_res6 <- topTable(fit6, coef=2, number=nrow(counts_matrix))
-  de_called6 <- rownames(de_res6)[de_res6$P.Value < alpha]
-  
+  ## Compare with RUVseq 
+  uvseq <- RUVg(cts, cIdx=tail(1:nrow(cts),n=10), k=1)
+  # edgeR
+  de_called6 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha, covar=uvseq$W)  
   tpr6 <- length(intersect(de_called6, de_ground_truth)) / N_DE
   fpr6 <- length(setdiff(de_called6, de_ground_truth)) / N_nonDE
-    
+  # DESeq2
+  de_called6_deseq <- DESeq2_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha, covar=uvseq$W)
+  tpr6_deseq <- length(intersect(de_called6_deseq, de_ground_truth)) / N_DE
+  fpr6_deseq <- length(setdiff(de_called6_deseq, de_ground_truth)) / N_nonDE
+  
+  ## Compare with SVAseq 
+  mod1 <- model.matrix(~as.factor(group)); mod0 <- cbind(mod1[,1])
+  svseq <- svaseq(cts, mod1, mod0, n.sv=1)
+  # edgeR
+  de_called7 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha, covar=svseq$sv)  
+  tpr7 <- length(intersect(de_called7, de_ground_truth)) / N_DE
+  fpr7 <- length(setdiff(de_called7, de_ground_truth)) / N_nonDE
+  # DESeq2
+  de_called7_deseq <- DESeq2_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha, covar=svseq$sv)
+  tpr7_deseq <- length(intersect(de_called7_deseq, de_ground_truth)) / N_DE
+  fpr7_deseq <- length(setdiff(de_called7_deseq, de_ground_truth)) / N_nonDE
   
   
   ####  Collect and output results
-  DE_res <- matrix(c(fpr1, tpr1, fpr1_deseq, tpr1_deseq, fpr2, tpr2, fpr2_deseq, tpr2_deseq, 
-                     fpr3, tpr3, fpr4, tpr4, fpr5, tpr5, fpr5_deseq, tpr5_deseq, fpr6, tpr6), nrow=2)
-  colnames(DE_res) <- c("RawCounts.edgeR", "RawCounts.DESeq2", "OneStep.edgeR", "OneStep.DESeq2", 
-                        "ComBat.lm", "ComBat.voom", "ComBat-seq.edgeR", "ComBat-seq.DESeq2", "ComBat-seq.voom")
+  DE_res <- matrix(c(fpr01, tpr01, fpr01_deseq, tpr01_deseq,  # baseline - indipendent simulation
+                     fpr02, tpr02, fpr02_deseq, tpr02_deseq,  # baseline - quantile fix dispersion
+                     fpr1, tpr1, fpr1_deseq, tpr1_deseq, # data with batch effect
+                     fpr2, tpr2, fpr2_deseq, tpr2_deseq, # one-step approaches
+                     fpr3, tpr3,     # current combat
+                     fpr5, tpr5, fpr5_deseq, tpr5_deseq, # ComBat-seq
+                     fpr6, tpr6, fpr6_deseq, tpr6_deseq, # RUVseq
+                     fpr7, tpr7, fpr7_deseq, tpr7_deseq), # SVAseq
+                   nrow=2)
+  colnames(DE_res) <- c("BaseIndi.edgeR", "BaseIndi.DESeq2", "BaseQuant.edgeR", "BaseQuant.DESeq2",
+                        "Batch.edgeR", "Batch.DESeq2", "OneStep.edgeR", "OneStep.DESeq2", "ComBat.lm", 
+                        "ComBatseq.edgeR", "ComBatseq.DESeq2", 
+                        "RUVseq.edgeR", "RUVseq.DESeq2", "SVAseq.edgeR", "SVAseq.DESeq2")
   rownames(DE_res) <- c("fpr", "tpr")
   DE_res <- as.data.frame(DE_res)
   
   first.file <- !file.exists(sprintf('fpr_%s.csv', exp_name))
-  # type 1 error rate (false positive rate)
   write.table(DE_res["fpr", ], sprintf('fpr_%s.csv', exp_name), 
-              append=!first.file, col.names=first.file, row.names=FALSE, sep=",")
-  # power (true positive rate)
+              append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # type 1 error rate (false positive rate)
   write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name), 
-              append=!first.file, col.names=first.file, row.names=FALSE, sep=",")
-  
-  cts_list[[iter]] <- counts_matrix
-  rm(counts_matrix)
+              append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # power (true positive rate)
 }
-
-save(cts_list, N_samples, file=sprintf('data_%s.RData', exp_name))
