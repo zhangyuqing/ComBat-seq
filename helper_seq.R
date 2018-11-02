@@ -30,7 +30,7 @@ match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
         new_counts_sub[a,b] <- 0
       }else{
         tmp_p <- pnbinom(counts_sub[a, b], mu=old_mu[a, b], size=1/old_phi[a])
-        if(abs(tmp_p-1)<1e-6){
+        if(abs(tmp_p-1)<1e-4){
           new_counts_sub[a,b] <- counts_sub[a, b]  
           # for outlier count, if p==1, will return Inf values -> use original count instead
         }else{
