@@ -63,6 +63,7 @@ matchDisp <- function(x, disp, target.disp){
   mu <- mean(x)
   new.x <- sapply(x, function(ct){
     p <- pnbinom(ct, mu=mu, size=1/disp)
+    if(abs(p-1)<1e-4){return(ct)}
     return(qnbinom(p, mu=mu, size=1/target.disp))
   })
   return(new.x)
@@ -84,8 +85,10 @@ edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=N
   fit <- glmQLFit(y, design)
   qlf <- glmQLFTest(fit, coef=2)
   de_res <- topTags(qlf, n=nrow(counts_mat))$table
+  
   de_called <- rownames(de_res)[de_res$PValue < alpha]
-  return(de_called)
+  de_called_fdr <- rownames(de_res)[de_res$FDR < alpha]
+  return(list(unadj=de_called, fdr=de_called_fdr))
 }
 
 
@@ -106,10 +109,27 @@ DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=
     col_data <- data.frame(Group=as.factor(group))
     design_formula <- ~Group
   }
+  
   dds <- DESeqDataSetFromMatrix(countData=counts_mat, colData=col_data, design=design_formula)
   dds <- DESeq(dds)
   de_res <- results(dds, name="Group_1_vs_0")
+  
   de_called <- rownames(de_res)[de_res$pvalue < alpha]
-  return(de_called)
+  de_called_fdr <- rownames(de_res)[de_res$padj < alpha]
+  return(list(unadj=de_called, fdr=de_called_fdr))
+}
+
+
+perfStats <- function(called_vec, ground_truth_vec, N_genes){
+  tp <- length(intersect(called_vec, ground_truth_vec))
+  fp <- length(setdiff(called_vec, ground_truth_vec)) 
+  N_DE <- length(ground_truth_vec)
+  N_nonDE <- N_genes - N_DE
+    
+  tpr <- tp / N_DE
+  fpr <- fp / N_nonDE
+  prec <- tp / length(called_vec)
+  
+  return(c(tpr=tpr, fpr=fpr, prec=prec))
 }
 

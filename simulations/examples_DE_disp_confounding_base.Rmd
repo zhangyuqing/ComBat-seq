@@ -19,7 +19,7 @@ From previous analysis (*"powerdown_unbalanced"*), it appears that ComBat-seq wo
 * Dispersion: Batch 1 - 0.15, Batch 2 - 0.15***dispersion fold level**
 * Study design: **Different levels of confounding**
 * Reads per gene: Median 120 (coverage 5)
-* Total number of samples: 20
+* Total number of samples: 20 / 60
 
 Note that these parameters are consistent with my observations from real datasets. 
 
@@ -27,6 +27,8 @@ Two factors under examination are dispersion fold level and level of confounding
 
 * Dispersion level: 1 (no dispersion difference), 2, 3, 4, 5
 * Confounding: 0.5 (no confounding), 0.4, 0.3, 0.2
+
+In addition, we see if we observe the same results with different total number of samples (N=20 vs N=60).
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
@@ -40,7 +42,7 @@ sel_method_vec <- c()
 ```
 
 
-## Results - combination of two factors 
+## TPR vs FPR (boxplots)
 
 ```{r, echo=FALSE, results='hide'}
 fpr_lst <- tpr_lst <- list()
@@ -61,8 +63,8 @@ names(tpr_lst) <- names(fpr_lst) <- paste0("Cnfnd", confounding_level_vec)
 tpr_merged <- melt(tpr_lst); colnames(tpr_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
 fpr_merged <- melt(fpr_lst); colnames(fpr_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
 
-tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res)[c(1:5,7:8)])
-fpr_merged$Method <- factor(fpr_merged$Method, levels=colnames(fpr_res)[c(1:5,7:8)])
+tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res)[sel_method_vec])
+fpr_merged$Method <- factor(fpr_merged$Method, levels=colnames(fpr_res)[sel_method_vec])
 tpr_merged$Cnfnd <- factor(tpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
 fpr_merged$Cnfnd <- factor(fpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
 ```
@@ -110,6 +112,32 @@ p2 <- ggarrange(p2_fpr, p2_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), 
 ```{r, echo=FALSE, fig.width=5, fig.height=3}
 p2
 ```
+
+## TPR vs FPR (scatter)
+
+```{r, echo=FALSE}
+p2_fpr <- ggplot(fpr_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
+  facet_grid(Cnfnd~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  #labs(x="Confounding level increase") +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p2_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  labs(x="Confounding level increase") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+p2 <- ggarrange(p2_fpr, p2_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+```
+
+
+## TPR vs FDR (scatter)
+
+Similar plot (sensitivity vs 1-FDR) as Figure 6 in DESeq2 paper.
+
+
+
 
 ## Thoughts & future work
 
