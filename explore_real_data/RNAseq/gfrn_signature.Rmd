@@ -861,6 +861,179 @@ for(i in 1:N_sel_nb){
 ```
 
 
+## More justification for having different dispersion parameter for different batches {.tabset}
+
+Finally, a very important assumption of ComBat-seq model (compared to adding batch covariates in linear model of edgeR and DESeq), is that **having a different dispersion parameter for each batch is beneficial for DE performance. As argued by many, if not all, of these papers, accurate estimation of dispersion paramters are important for DE detection**. As we have seen above, there is some difference in dispersion distribution across batches. If dispersion estimates within each batch and using the whole study are not consistent with each other, then it is justification that we may need different dipsersion parameter for different batches, and it could be good for DE.
+
+Here we generate scatter plots comparing dispersion estimates within each batch to estimates from whole dataset (**including batch as a covariate in whole study**).
+
+```{r, echo=FALSE, results='hide'}
+##  Dispersion in batches & in whole study (including batch as covariate) (edgeR)
+y_batch1 <- DGEList(counts=cts[, batch==1], group=as.factor(group_num[batch==1]))
+y_batch1 <- calcNormFactors(y_batch1, method="TMM")
+design_batch1 <- model.matrix(~as.factor(group_num[batch==1]))
+y_batch1 <- estimateDisp(y_batch1, design_batch1)
+
+y_batch2 <- DGEList(counts=cts[, batch==2], group=as.factor(group_num[batch==2]))
+y_batch2 <- calcNormFactors(y_batch2, method="TMM")
+design_batch2 <- model.matrix(~as.factor(group_num[batch==2]))
+y_batch2 <- estimateDisp(y_batch2, design_batch2)
+
+y_batch3 <- DGEList(counts=cts[, batch==3], group=as.factor(group_num[batch==3]))
+y_batch3 <- calcNormFactors(y_batch3, method="TMM")
+design_batch3 <- model.matrix(~as.factor(group_num[batch==3]))
+y_batch3 <- estimateDisp(y_batch3, design_batch3)
+
+y_whole <- DGEList(counts=cts)
+y_whole <- calcNormFactors(y_whole, method="TMM")
+design_whole <- model.matrix(~ as.factor(group_num) + as.factor(batch))
+y_whole <- estimateDisp(y_whole, design_whole)
+
+disp1_gene_edgeR <- y_batch1$tagwise.dispersion
+disp2_gene_edgeR <- y_batch2$tagwise.dispersion
+disp3_gene_edgeR <- y_batch3$tagwise.dispersion
+dispW_gene_edgeR <- y_whole$tagwise.dispersion
+
+disp1_trend_edgeR <- y_batch1$trended.dispersion
+disp2_trend_edgeR <- y_batch2$trended.dispersion
+disp3_trend_edgeR <- y_batch3$trended.dispersion
+dispW_trend_edgeR <- y_whole$trended.dispersion
+
+
+##  Dispersion in batches & in whole study (including batch as covariate) (DESeq2)
+dds1 <- DESeqDataSetFromMatrix(countData=cts[,batch==1], design=~Group,
+                               colData=data.frame(Group=as.factor(group_num[batch==1])))
+dds1 <- estimateSizeFactors(dds1)
+dds1 <- estimateDispersions(dds1)
+
+dds2 <- DESeqDataSetFromMatrix(countData=cts[,batch==2], design=~Group,
+                               colData=data.frame(Group=as.factor(group_num[batch==2])))
+dds2 <- estimateSizeFactors(dds2)
+dds2 <- estimateDispersions(dds2)
+
+dds3 <- DESeqDataSetFromMatrix(countData=cts[,batch==3], design=~Group,
+                               colData=data.frame(Group=as.factor(group_num[batch==3])))
+dds3 <- estimateSizeFactors(dds3)
+dds3 <- estimateDispersions(dds3)
+
+ddsW <- DESeqDataSetFromMatrix(countData=cts, design=~Group + Batch,
+                               colData=data.frame(Group=as.factor(group_num), Batch=as.factor(batch)))
+ddsW <- estimateSizeFactors(ddsW)
+ddsW <- estimateDispersions(ddsW)
+
+disp1_gene_DESeq2 <- dispersions(dds1)
+disp2_gene_DESeq2 <- dispersions(dds2)
+disp3_gene_DESeq2 <- dispersions(dds3)
+dispW_gene_DESeq2 <- dispersions(ddsW)
+```
+
+
+### Gene-wise dispersion estimates
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=12}
+disps_all <- data.frame(Batch1.edgeR=disp1_gene_edgeR, 
+                        Batch2.edgeR=disp2_gene_edgeR, 
+                        Batch3.edgeR=disp3_gene_edgeR,
+                        Whole.edgeR=dispW_gene_edgeR,
+                        Batch1.edgeR.trend=disp1_trend_edgeR, 
+                        Batch2.edgeR.trend=disp2_trend_edgeR, 
+                        Batch3.edgeR.trend=disp3_trend_edgeR, 
+                        Whole.edgeR.trend=dispW_trend_edgeR,
+                        Batch1.DESeq2=disp1_gene_DESeq2, 
+                        Batch2.DESeq2=disp2_gene_DESeq2, 
+                        Batch3.DESeq2=disp3_gene_DESeq2, 
+                        Whole.DESeq2=dispW_gene_DESeq2)
+disps_all_log10 <- log10(disps_all)
+
+plt_range_edgeR <- range(c(disp1_gene_edgeR, disp2_gene_edgeR, disp3_gene_edgeR, dispW_gene_edgeR), na.rm=TRUE)
+plt_range_edgeRtrend <- range(c(disp1_trend_edgeR, disp2_trend_edgeR, disp3_trend_edgeR, dispW_trend_edgeR), na.rm=TRUE)
+plt_range_DESeq2 <- range(c(disp1_gene_DESeq2, disp2_gene_DESeq2, disp3_gene_DESeq2, dispW_gene_DESeq2), na.rm=TRUE)
+
+plt_range_edgeR_log10 <- log10(plt_range_edgeR)
+plt_range_edgeRtrend_log10 <- log10(plt_range_edgeRtrend)
+plt_range_DESeq2_log10 <- log10(plt_range_DESeq2)
+
+genScatterPlot <- function(df, aes.x, aes.y, method, plt.range){
+  p <- ggplot(df, aes(x=df[,aes.x], y=df[,aes.y])) +
+  geom_point() +
+  geom_abline(slope=1, intercept=0, color="blue", linetype="dashed") +
+  labs(title=sprintf("%s, Pearson corr = %s", method,
+                     round(cor(df[,aes.x], df[,aes.y], use="pairwise.complete.obs", method="pearson"),2))) +
+  scale_x_continuous(limits=plt.range) +
+  scale_y_continuous(limits=plt.range)
+}
+
+p1W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR", aes.y="Batch1.edgeR", 
+                            method="edgeR", plt.range=plt_range_edgeR_log10) + 
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 1")
+p2W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR", aes.y="Batch2.edgeR", 
+                            method="edgeR", plt.range=plt_range_edgeR_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 2")
+p3W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR", aes.y="Batch3.edgeR", 
+                            method="edgeR", plt.range=plt_range_edgeR_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 3")
+p1v2_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch1.edgeR", aes.y="Batch2.edgeR", 
+                             method="edgeR", plt.range=plt_range_edgeR_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 2")
+p1v3_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch1.edgeR", aes.y="Batch3.edgeR", 
+                             method="edgeR", plt.range=plt_range_edgeR_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 3")
+p2v3_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch2.edgeR", aes.y="Batch3.edgeR", 
+                             method="edgeR", plt.range=plt_range_edgeR_log10) +
+  labs(x="dispersion (log10 scale) - batch 2", y="dispersion (log10 scale) - batch 3")    
+  
+p1W_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Whole.DESeq2", aes.y="Batch1.DESeq2", 
+                             method="DESeq2", plt.range=plt_range_DESeq2_log10) + 
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 1")
+p2W_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Whole.DESeq2", aes.y="Batch2.DESeq2", 
+                             method="DESeq2", plt.range=plt_range_DESeq2_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 2")
+p3W_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Whole.DESeq2", aes.y="Batch3.DESeq2", 
+                             method="DESeq2", plt.range=plt_range_DESeq2_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 3")
+p1v2_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Batch1.DESeq2", aes.y="Batch2.DESeq2", 
+                              method="DESeq2", plt.range=plt_range_DESeq2_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 2")
+p1v3_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Batch1.DESeq2", aes.y="Batch3.DESeq2", 
+                              method="DESeq2", plt.range=plt_range_DESeq2_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 3")
+p2v3_DESeq2 <- genScatterPlot(disps_all_log10, aes.x="Batch2.DESeq2", aes.y="Batch3.DESeq2", 
+                              method="DESeq2", plt.range=plt_range_DESeq2_log10) +
+  labs(x="dispersion (log10 scale) - batch 2", y="dispersion (log10 scale) - batch 3")    
+
+grid.arrange(p1W_edgeR, p1W_DESeq2, p2W_edgeR, p2W_DESeq2, p3W_edgeR, p3W_DESeq2,
+             p1v2_edgeR, p1v2_DESeq2, p1v3_edgeR, p1v3_DESeq2, p2v3_edgeR, p2v3_DESeq2,
+             nrow=6, ncol=2)
+```
+
+### Trended dispersion estimates (log10 scale)
+
+```{r, echo=FALSE, results='hide', fig.width=4, fig.height=12}
+p1W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR.trend", aes.y="Batch1.edgeR.trend", 
+                            method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) + 
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 1")
+p2W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR.trend", aes.y="Batch2.edgeR.trend", 
+                            method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 2")
+p3W_edgeR <- genScatterPlot(disps_all_log10, aes.x="Whole.edgeR.trend", aes.y="Batch3.edgeR.trend", 
+                            method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) +
+  labs(x="dispersion (log10 scale) - whole dataset", y="dispersion (log10 scale) - batch 3")
+p1v2_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch1.edgeR.trend", aes.y="Batch2.edgeR.trend", 
+                             method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 2")
+p1v3_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch1.edgeR.trend", aes.y="Batch3.edgeR.trend", 
+                             method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) +
+  labs(x="dispersion (log10 scale) - batch 1", y="dispersion (log10 scale) - batch 3")
+p2v3_edgeR <- genScatterPlot(disps_all_log10, aes.x="Batch2.edgeR.trend", aes.y="Batch3.edgeR.trend", 
+                             method="edgeR trend", plt.range=plt_range_edgeRtrend_log10) +
+  labs(x="dispersion (log10 scale) - batch 2", y="dispersion (log10 scale) - batch 3")    
+  
+grid.arrange(p1W_edgeR, p1W_DESeq2, p2W_edgeR, p2W_DESeq2, p3W_edgeR, p3W_DESeq2,
+             p1v2_edgeR, p1v2_DESeq2, p1v3_edgeR, p1v3_DESeq2, p2v3_edgeR, p2v3_DESeq2,
+             nrow=6, ncol=2)
+```
+
+
 
 ## Session info 
 
