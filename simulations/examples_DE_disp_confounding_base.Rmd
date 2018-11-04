@@ -11,131 +11,521 @@ output:
 
 ## About this simulation
 
-From previous analysis (*"powerdown_unbalanced"*), it appears that ComBat-seq works when there is variance batch effect & when there is some level of confounding between batch and condition (i.e. in unbalanced study design). We dig deeper in these two factors.
+From previous analysis (*"powerdown_unbalanced"*), it appears that ComBat-seq works when there is variance batch effect **AND** when there is some level of confounding between batch and condition (i.e. in unbalanced study design). We dig deeper in these two factors.
 
-## Setup
+
+## Simulation setup
 
 * Mean fold changes: Biological - 2, Batch - 1.5 
 * Dispersion: Batch 1 - 0.15, Batch 2 - 0.15***dispersion fold level**
 * Study design: **Different levels of confounding**
 * Reads per gene: Median 120 (coverage 5)
-* Total number of samples: 20 / 60
+* Total number of samples: 20 (*we look at N=60 later in comparison to see if patterns hold*)
 
-Note that these parameters are consistent with my observations from real datasets. 
+Note that the fixed parameters are consistent with (i.e. within the range of) my observations from real datasets (See explore_real_data for details). 
 
-Two factors under examination are dispersion fold level and level of confounding. Confounding level is measured by how many percentage of samples in batch 1 is control samples. 2 batches have the same size. Grid for the two factors:
+Two factors under examination are dispersion fold change and level of confounding. Confounding level is measured by **how many percentage of samples in batch 1 is control samples**. 2 batches have the same size, but in batch 2, the number of controls and cases are reversed compared to batch 1. Grids for the two factors:
 
 * Dispersion level: 1 (no dispersion difference), 2, 3, 4, 5
 * Confounding: 0.5 (no confounding), 0.4, 0.3, 0.2
 
-In addition, we see if we observe the same results with different total number of samples (N=20 vs N=60).
-
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
 sapply(c("ggplot2", "gridExtra", "reshape2", "ggpubr"), require, character.only=TRUE)
-results_dir <- "~/Google Drive/ComBat_seq/DE_analysis_disp_confounding_base"
+results_dir <- "~/Google Drive/ComBat_seq/DE_disp_confounding_base"
 #results_dir <- "~/yuqingz/ComBat_seq/DE_disp_confounding_base"
+N_samples <- 20
 
 disp_level_vec <- 1:5
 confounding_level_vec <- seq(from=0.5,to=0.2,by=-0.1)
-sel_method_vec <- c()
+sel_method_list <- list(edgeR=c("BaseIndi.edgeR", #"BaseQuant.edgeR", 
+                                "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", 
+                                "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
+                        DESeq2=c("BaseIndi.DESeq2", #"BaseQuant.DESeq2", 
+                                 "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", 
+                                 "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
 ```
 
 
-## TPR vs FPR (boxplots)
+## Results 
+
+### TPR vs FPR {.tabset}
 
 ```{r, echo=FALSE, results='hide'}
-fpr_lst <- tpr_lst <- list()
+fpr_all_lst <- tpr_all_lst <- list()
 for(i in 1:length(confounding_level_vec)){
-  fpr_lst[[i]] <- tpr_lst[[i]] <- list()
+  fpr_all_lst[[i]] <- tpr_all_lst[[i]] <- list()
   for(j in 1:length(disp_level_vec)){
-    exp_name <- paste0("simDispConfound_dispFC", disp_level_vec[j],
+    exp_name <- paste0("simDCbase_N", N_samples, "_dispFC", disp_level_vec[j],
                        "_percent", gsub(".","", confounding_level_vec[i], fixed=T))
     tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
     fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
     
-    tpr_lst[[i]][[j]] <- as.list(colMeans(tpr_res[, sel_method_vec]))
-    fpr_lst[[i]][[j]]  <- as.list(colMeans(fpr_res[, sel_method_vec]))
+    tpr_res$BaseQuant.edgeR <- NULL; tpr_res$BaseQuant.DESeq2 <- NULL
+    fpr_res$BaseQuant.edgeR <- NULL; fpr_res$BaseQuant.DESeq2 <- NULL
+    
+    tpr_all_lst[[i]][[j]] <- as.list(colMeans(tpr_res, na.rm=TRUE))
+    fpr_all_lst[[i]][[j]]  <- as.list(colMeans(fpr_res, na.rm=TRUE))
   }
-  names(tpr_lst[[i]]) <- names(fpr_lst[[i]]) <- paste0("Disp", disp_level_vec)
+  names(tpr_all_lst[[i]]) <- names(fpr_all_lst[[i]]) <- paste0("Disp", disp_level_vec)
 }
-names(tpr_lst) <- names(fpr_lst) <- paste0("Cnfnd", confounding_level_vec)
-tpr_merged <- melt(tpr_lst); colnames(tpr_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
-fpr_merged <- melt(fpr_lst); colnames(fpr_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
+names(tpr_all_lst) <- names(fpr_all_lst) <- paste0("Cnfnd", confounding_level_vec)
 
-tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res)[sel_method_vec])
-fpr_merged$Method <- factor(fpr_merged$Method, levels=colnames(fpr_res)[sel_method_vec])
+## All methods
+tpr_merged <- melt(tpr_all_lst); colnames(tpr_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fpr_merged <- melt(fpr_all_lst); colnames(fpr_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
+tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res))
+fpr_merged$Method <- factor(fpr_merged$Method, levels=colnames(fpr_res))
 tpr_merged$Cnfnd <- factor(tpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
 fpr_merged$Cnfnd <- factor(fpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+
+
+## edgeR only
+tpr_edgeR_lst <- lapply(tpr_all_lst, function(t1_lst){lapply(t1_lst, function(t2_lst){t2_lst[sel_method_list$edgeR]})})
+fpr_edgeR_lst <- lapply(fpr_all_lst, function(f1_lst){lapply(f1_lst, function(f2_lst){f2_lst[sel_method_list$edgeR]})})
+
+tpr_edgeR_merged <- melt(tpr_edgeR_lst); colnames(tpr_edgeR_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fpr_edgeR_merged <- melt(fpr_edgeR_lst); colnames(fpr_edgeR_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
+tpr_edgeR_merged$Method <- factor(tpr_edgeR_merged$Method, levels=sel_method_list$edgeR)
+fpr_edgeR_merged$Method <- factor(fpr_edgeR_merged$Method, levels=sel_method_list$edgeR)
+tpr_edgeR_merged$Cnfnd <- factor(tpr_edgeR_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fpr_edgeR_merged$Cnfnd <- factor(fpr_edgeR_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+
+
+## DESeq2 only
+tpr_DESeq2_lst <- lapply(tpr_all_lst, function(t1_lst){lapply(t1_lst, function(t2_lst){t2_lst[sel_method_list$DESeq2]})})
+fpr_DESeq2_lst <- lapply(fpr_all_lst, function(f1_lst){lapply(f1_lst, function(f2_lst){f2_lst[sel_method_list$DESeq2]})})
+
+tpr_DESeq2_merged <- melt(tpr_DESeq2_lst); colnames(tpr_DESeq2_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fpr_DESeq2_merged <- melt(fpr_DESeq2_lst); colnames(fpr_DESeq2_merged) <- c("FPR", "Method", "Disp", "Cnfnd")
+tpr_DESeq2_merged$Method <- factor(tpr_DESeq2_merged$Method, levels=sel_method_list$DESeq2)
+fpr_DESeq2_merged$Method <- factor(fpr_DESeq2_merged$Method, levels=sel_method_list$DESeq2)
+tpr_DESeq2_merged$Cnfnd <- factor(tpr_DESeq2_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fpr_DESeq2_merged$Cnfnd <- factor(fpr_DESeq2_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
 ```
 
-### Facet by confounding levels
+
+#### Line plots {.tabset}
+
+##### Facet by confounding levels
 
 ```{r, echo=FALSE}
+## All methods
 p_fpr <- ggplot(fpr_merged, aes(x=Disp, y=FPR, group=Method, color=Method)) +
   facet_grid(~Cnfnd) +
   geom_line() +
   geom_hline(yintercept=0.05, col="red", linetype="dashed") +
-  #labs(x="Dispersion level increase") +
-  #theme(axis.text.x=element_text(angle=45, hjust=1)) 
-  theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+  labs(title="All") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
 p_tpr <- ggplot(tpr_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
   facet_grid(~Cnfnd) +
   geom_line() +
-  labs(x="Dispersion level increase") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p <- ggarrange(p_fpr, p_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+  #labs(title="All") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_all <- ggarrange(plotlist=list(p_fpr, p_tpr), nrow=2, 
+                   common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+## edgeR only
+p_edgeR_fpr <- ggplot(fpr_edgeR_merged, aes(x=Disp, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="edgeR") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p_edgeR_tpr <- ggplot(tpr_edgeR_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  #labs(title="edgeR") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR <- ggarrange(plotlist=list(p_edgeR_fpr, p_edgeR_tpr), nrow=2, 
+                     common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+## DESeq2 only
+p_DESeq2_fpr <- ggplot(fpr_DESeq2_merged, aes(x=Disp, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="DESeq2") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p_DESeq2_tpr <- ggplot(tpr_DESeq2_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  #labs(title="DESeq2") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2 <- ggarrange(plotlist=list(p_DESeq2_fpr, p_DESeq2_tpr), nrow=2, 
+                      common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+#p <- ggarrange(plotlist=list(p_all, p_edgeR, p_DESeq2), nrow=3)
+p <- ggarrange(plotlist=list(p_edgeR, p_DESeq2), nrow=2)
 ```
 
-```{r, echo=FALSE, fig.width=5, fig.height=3}
+```{r, echo=FALSE, fig.width=5, fig.height=7}
 p
 ```
 
-### Facet by dispersion levels
+
+##### Facet by dispersion levels
 
 ```{r, echo=FALSE}
-p2_fpr <- ggplot(fpr_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
+## All methods
+p_fpr <- ggplot(fpr_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
   facet_grid(~Disp) +
   geom_line() +
   geom_hline(yintercept=0.05, col="red", linetype="dashed") +
-  #labs(x="Confounding level increase") +
-  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
-p2_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  labs(title="All") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
   facet_grid(~Disp) +
   geom_line() +
-  labs(x="Confounding level increase") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p2 <- ggarrange(p2_fpr, p2_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+  #labs(title="All") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_all <- ggarrange(plotlist=list(p_fpr, p_tpr), nrow=2, 
+                   common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+## edgeR only
+p_edgeR_fpr <- ggplot(fpr_edgeR_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="edgeR") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p_edgeR_tpr <- ggplot(tpr_edgeR_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  #labs(title="edgeR") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR <- ggarrange(plotlist=list(p_edgeR_fpr, p_edgeR_tpr), nrow=2, 
+                     common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+## DESeq2 only
+p_DESeq2_fpr <- ggplot(fpr_DESeq2_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="DESeq2") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+  #theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
+p_DESeq2_tpr <- ggplot(tpr_DESeq2_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  #labs(title="DESeq2") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2 <- ggarrange(plotlist=list(p_DESeq2_fpr, p_DESeq2_tpr), nrow=2, 
+                      common.legend=TRUE, legend="bottom")#, heights=c(5.5,6))
+
+#p <- ggarrange(plotlist=list(p_all, p_edgeR, p_DESeq2), nrow=3)
+p <- ggarrange(plotlist=list(p_edgeR, p_DESeq2), nrow=2)
 ```
 
-```{r, echo=FALSE, fig.width=5, fig.height=3}
+```{r, echo=FALSE, fig.width=5.5, fig.height=7}
+p
+```
+
+
+#### Scatter plots
+
+```{r, echo=FALSE}
+if(identical(fpr_merged[,-1], tpr_merged[,-1])){
+  perfstats_all <- data.frame(TPR=tpr_merged$TPR, FPR=fpr_merged$FPR, tpr_merged[,-1])
+}else{stop("ERROR in merging data frames! - All")}
+#identical(perfstats_all[,-1],fpr_merged)
+
+if(identical(fpr_edgeR_merged[,-1], tpr_edgeR_merged[,-1])){
+  perfstats_edgeR <- data.frame(TPR=tpr_edgeR_merged$TPR, FPR=fpr_edgeR_merged$FPR, tpr_edgeR_merged[,-1])
+}else{stop("ERROR in merging data frames! - edgeR")}
+#identical(perfstats_edgeR[,-1], fpr_edgeR_merged)
+
+if(identical(fpr_DESeq2_merged[,-1], tpr_DESeq2_merged[,-1])){
+  perfstats_DESeq2 <- data.frame(TPR=tpr_DESeq2_merged$TPR, FPR=fpr_DESeq2_merged$FPR, tpr_DESeq2_merged[,-1])
+}else{stop("ERROR in merging data frames! - DESeq2")}
+#identical(perfstats_DESeq2[,-1], fpr_DESeq2_merged)
+
+```
+
+```{r, echo=FALSE}
+p2_all <- ggplot(perfstats_all, aes(x=FPR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_all$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="All methods") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+
+p2_edgeR <- ggplot(perfstats_edgeR, aes(x=FPR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_edgeR$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="edgeR") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+
+p2_DESeq2 <- ggplot(perfstats_DESeq2, aes(x=FPR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_DESeq2$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="DESeq2") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+  
+p2 <- ggarrange(p2_edgeR, p2_DESeq2, nrow=2)
+```
+
+```{r, echo=FALSE, fig.width=5, fig.height=7}
 p2
 ```
 
-## TPR vs FPR (scatter)
 
-```{r, echo=FALSE}
-p2_fpr <- ggplot(fpr_merged, aes(x=Cnfnd, y=FPR, group=Method, color=Method)) +
-  facet_grid(Cnfnd~Disp) +
-  geom_line() +
-  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
-  #labs(x="Confounding level increase") +
-  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  theme(axis.text.x=element_blank(), axis.title.x=element_blank()) 
-p2_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
-  facet_grid(~Disp) +
-  geom_line() +
-  labs(x="Confounding level increase") +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-p2 <- ggarrange(p2_fpr, p2_tpr, nrow=2, common.legend=TRUE, heights=c(4.5,5.5), legend="bottom")
+
+### TPR (sensitivity) vs FDR (1-precision) {.tabset}
+
+```{r, echo=FALSE, results='hide'}
+rm(list=ls())
+results_dir <- "~/Google Drive/ComBat_seq/DE_disp_confounding_base"
+#results_dir <- "~/yuqingz/ComBat_seq/DE_disp_confounding_base"
+N_samples <- 20
+
+disp_level_vec <- 1:5
+confounding_level_vec <- seq(from=0.5,to=0.2,by=-0.1)
+sel_method_list <- list(edgeR=c("BaseIndi.edgeR", #"BaseQuant.edgeR", 
+                                "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", 
+                                "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
+                        DESeq2=c("BaseIndi.DESeq2", #"BaseQuant.DESeq2", 
+                                 "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", 
+                                 "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
+```
+
+```{r, echo=FALSE, results='hide'}
+fdr_all_lst <- tpr_all_lst <- list()
+for(i in 1:length(confounding_level_vec)){
+  fdr_all_lst[[i]] <- tpr_all_lst[[i]] <- list()
+  for(j in 1:length(disp_level_vec)){
+    exp_name <- paste0("simDCbase_N", N_samples, "_dispFC", disp_level_vec[j],
+                       "_percent", gsub(".","", confounding_level_vec[i], fixed=T))
+    tpr_res <- read.csv(file.path(results_dir, sprintf('tprADJ_%s.csv', exp_name)))
+    prec_res <- read.csv(file.path(results_dir, sprintf('precADJ_%s.csv', exp_name)))
+    
+    tpr_res$BaseQuant.edgeR <- NULL; tpr_res$BaseQuant.DESeq2 <- NULL
+    prec_res$BaseQuant.edgeR <- NULL; prec_res$BaseQuant.DESeq2 <- NULL
+    
+    tpr_all_lst[[i]][[j]] <- as.list(colMeans(tpr_res, na.rm=TRUE))
+    fdr_all_lst[[i]][[j]]  <- as.list(colMeans(1-prec_res, na.rm=TRUE))
+  }
+  names(tpr_all_lst[[i]]) <- names(fdr_all_lst[[i]]) <- paste0("Disp", disp_level_vec)
+}
+names(tpr_all_lst) <- names(fdr_all_lst) <- paste0("Cnfnd", confounding_level_vec)
+
+## All methods
+tpr_merged <- melt(tpr_all_lst); colnames(tpr_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fdr_merged <- melt(fdr_all_lst); colnames(fdr_merged) <- c("FDR", "Method", "Disp", "Cnfnd")
+tpr_merged$Method <- factor(tpr_merged$Method, levels=colnames(tpr_res))
+fdr_merged$Method <- factor(fdr_merged$Method, levels=colnames(prec_res))
+tpr_merged$Cnfnd <- factor(tpr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fdr_merged$Cnfnd <- factor(fdr_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+
+
+## edgeR only
+tpr_edgeR_lst <- lapply(tpr_all_lst, function(t1_lst){lapply(t1_lst, function(t2_lst){t2_lst[sel_method_list$edgeR]})})
+fdr_edgeR_lst <- lapply(fdr_all_lst, function(f1_lst){lapply(f1_lst, function(f2_lst){f2_lst[sel_method_list$edgeR]})})
+
+tpr_edgeR_merged <- melt(tpr_edgeR_lst); colnames(tpr_edgeR_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fdr_edgeR_merged <- melt(fdr_edgeR_lst); colnames(fdr_edgeR_merged) <- c("FDR", "Method", "Disp", "Cnfnd")
+tpr_edgeR_merged$Method <- factor(tpr_edgeR_merged$Method, levels=sel_method_list$edgeR)
+fdr_edgeR_merged$Method <- factor(fdr_edgeR_merged$Method, levels=sel_method_list$edgeR)
+tpr_edgeR_merged$Cnfnd <- factor(tpr_edgeR_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fdr_edgeR_merged$Cnfnd <- factor(fdr_edgeR_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+
+
+## DESeq2 only
+tpr_DESeq2_lst <- lapply(tpr_all_lst, function(t1_lst){lapply(t1_lst, function(t2_lst){t2_lst[sel_method_list$DESeq2]})})
+fdr_DESeq2_lst <- lapply(fdr_all_lst, function(f1_lst){lapply(f1_lst, function(f2_lst){f2_lst[sel_method_list$DESeq2]})})
+
+tpr_DESeq2_merged <- melt(tpr_DESeq2_lst); colnames(tpr_DESeq2_merged) <- c("TPR", "Method", "Disp", "Cnfnd")
+fdr_DESeq2_merged <- melt(fdr_DESeq2_lst); colnames(fdr_DESeq2_merged) <- c("FDR", "Method", "Disp", "Cnfnd")
+tpr_DESeq2_merged$Method <- factor(tpr_DESeq2_merged$Method, levels=sel_method_list$DESeq2)
+fdr_DESeq2_merged$Method <- factor(fdr_DESeq2_merged$Method, levels=sel_method_list$DESeq2)
+tpr_DESeq2_merged$Cnfnd <- factor(tpr_DESeq2_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
+fdr_DESeq2_merged$Cnfnd <- factor(fdr_DESeq2_merged$Cnfnd, levels=paste0("Cnfnd", confounding_level_vec))
 ```
 
 
-## TPR vs FDR (scatter)
+#### Line plots {.tabset}
+
+##### Facet by confounding levels
+
+```{r, echo=FALSE, results="hide"}
+## All methods
+p_fdr <- ggplot(fdr_merged, aes(x=Disp, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="All", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_tpr <- ggplot(tpr_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_all <- ggarrange(plotlist=list(p_fdr, p_tpr), nrow=2, 
+                   common.legend=TRUE, legend="bottom")
+
+## edgeR only
+p_edgeR_fdr <- ggplot(fdr_edgeR_merged, aes(x=Disp, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="edgeR", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR_tpr <- ggplot(tpr_edgeR_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR <- ggarrange(plotlist=list(p_edgeR_fdr, p_edgeR_tpr), nrow=2, 
+                     common.legend=TRUE, legend="bottom")
+
+## DESeq2 only
+p_DESeq2_fdr <- ggplot(fdr_DESeq2_merged, aes(x=Disp, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="DESeq2", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2_tpr <- ggplot(tpr_DESeq2_merged, aes(x=Disp, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Cnfnd) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2 <- ggarrange(plotlist=list(p_DESeq2_fdr, p_DESeq2_tpr), nrow=2, 
+                      common.legend=TRUE, legend="bottom")
+
+p <- ggarrange(plotlist=list(p_edgeR, p_DESeq2), nrow=2)
+```
+
+```{r, echo=FALSE, fig.width=5, fig.height=7}
+p
+```
+
+
+##### Facet by dispersion levels
+
+```{r, echo=FALSE}
+## All methods
+p_fdr <- ggplot(fdr_merged, aes(x=Cnfnd, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="All", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_tpr <- ggplot(tpr_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_all <- ggarrange(plotlist=list(p_fdr, p_tpr), nrow=2, 
+                   common.legend=TRUE, legend="bottom")
+
+## edgeR only
+p_edgeR_fdr <- ggplot(fdr_edgeR_merged, aes(x=Cnfnd, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="edgeR", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR_tpr <- ggplot(tpr_edgeR_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_edgeR <- ggarrange(plotlist=list(p_edgeR_fdr, p_edgeR_tpr), nrow=2, 
+                     common.legend=TRUE, legend="bottom")
+
+## DESeq2 only
+p_DESeq2_fdr <- ggplot(fdr_DESeq2_merged, aes(x=Cnfnd, y=FDR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  geom_hline(yintercept=0.05, col="red", linetype="dashed") +
+  labs(title="DESeq2", y="1 - Precision (FDR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2_tpr <- ggplot(tpr_DESeq2_merged, aes(x=Cnfnd, y=TPR, group=Method, color=Method)) +
+  facet_grid(~Disp) +
+  geom_line() +
+  labs(y="Sensitivity (TPR)") +
+  theme(axis.text.x=element_text(angle=45, hjust=1), axis.title.x=element_blank()) 
+p_DESeq2 <- ggarrange(plotlist=list(p_DESeq2_fdr, p_DESeq2_tpr), nrow=2, 
+                      common.legend=TRUE, legend="bottom")
+
+p <- ggarrange(plotlist=list(p_edgeR, p_DESeq2), nrow=2)
+```
+
+```{r, echo=FALSE, fig.width=5.5, fig.height=7}
+p
+```
+
+
+#### Scatter plots
 
 Similar plot (sensitivity vs 1-FDR) as Figure 6 in DESeq2 paper.
 
+```{r, echo=FALSE}
+if(identical(fdr_merged[,-1], tpr_merged[,-1])){
+  perfstats_all <- data.frame(TPR=tpr_merged$TPR, FDR=fdr_merged$FDR, tpr_merged[,-1])
+}else{stop("ERROR in merging data frames! - All")}
+#identical(perfstats_all[,-1],fdr_merged)
+
+if(identical(fdr_edgeR_merged[,-1], tpr_edgeR_merged[,-1])){
+  perfstats_edgeR <- data.frame(TPR=tpr_edgeR_merged$TPR, FDR=fdr_edgeR_merged$FDR, tpr_edgeR_merged[,-1])
+}else{stop("ERROR in merging data frames! - edgeR")}
+#identical(perfstats_edgeR[,-1], fdr_edgeR_merged)
+
+if(identical(fdr_DESeq2_merged[,-1], tpr_DESeq2_merged[,-1])){
+  perfstats_DESeq2 <- data.frame(TPR=tpr_DESeq2_merged$TPR, FDR=fdr_DESeq2_merged$FDR, tpr_DESeq2_merged[,-1])
+}else{stop("ERROR in merging data frames! - DESeq2")}
+#identical(perfstats_DESeq2[,-1], fdr_DESeq2_merged)
+
+```
+
+```{r, echo=FALSE}
+p2_all <- ggplot(perfstats_all, aes(x=FDR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_all$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="All methods", x="1 - Precision (FDR)", y="Sensitivity (TPR)") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+
+p2_edgeR <- ggplot(perfstats_edgeR, aes(x=FDR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_edgeR$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="edgeR", x="1 - Precision (FDR)", y="Sensitivity (TPR)") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+
+p2_DESeq2 <- ggplot(perfstats_DESeq2, aes(x=FDR, y=TPR, group=Method, color=Method, shape=Method)) +
+  geom_point(size=3) +
+  facet_grid(Cnfnd~Disp) +
+  scale_shape_manual(values=1:nlevels(perfstats_DESeq2$Method)) +
+  geom_vline(xintercept=0.05, linetype="dashed") +
+  labs(title="DESeq2", x="1 - Precision (FDR)", y="Sensitivity (TPR)") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
+  
+p2 <- ggarrange(p2_edgeR, p2_DESeq2, nrow=2)
+```
+
+```{r, echo=FALSE, fig.width=5, fig.height=7}
+p2
+```
 
 
 
