@@ -1,16 +1,16 @@
 rm(list=ls())
-demo <- TRUE  # if testing code set as TRUE, if running simulations set as FALSE
+demo <- TRUE  # if testing code, set as TRUE; if running simulations, set as FALSE
 if(demo){
-  wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
+  setwd("~/Documents/ComBat_seq/DE_analysis_tmp/")
   script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+  source(file.path(script_dir, "simulations/sim_DEpipe_helpers.R"))
 }else{
-  wdir <- "~/yuqingz/ComBat_seq/DE_disp_confounding_base/"
+  setwd("~/yuqingz/ComBat_seq/DE_disp_confounding_base/")
   script_dir <- ".."
+  source(file.path(script_dir, "sim_DEpipe_helpers.R"))
 }
-setwd(wdir)
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva", "RUVSeq", "MASS"), require, character.only=TRUE)
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
-source(file.path(script_dir, "sim_DEpipe_helpers.R"))
 set.seed(123)
 
 
@@ -20,7 +20,7 @@ disp_fold_level <- as.numeric(command_args[1])  # dispersion of batch 2 is how m
 confounding_level <- as.numeric(command_args[2])  # level of confounding, 0-0.5
 N_total_sample <- as.numeric(command_args[3])  # 20 / 60
 #disp_fold_level <- 3; confounding_level <- 0.3; N_total_sample <- 20
-factor_exam <- "DCbase"  #command_args[1]  
+factor_exam <- ifelse(demo, "demo", "DCbase")  #command_args[1]  
 bio_fold <- 2  #as.numeric(command_args[2])  
 batch_fold <- 1.5  #as.numeric(command_args[3])  
 size_1 <- 1/0.15  #as.numeric(command_args[4])  # 1/dispersion in batch 1 
@@ -58,6 +58,7 @@ group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep
 # DE
 de_ground_truth_ind <- sample(1:length(fasta), 100, replace=FALSE)
 G_ups <- de_ground_truth_ind[1:50]; G_downs <- de_ground_truth_ind[51:100]
+G_nulls <- setdiff(1:length(fasta), c(G_ups, G_downs))
 
 #for baseline datasets without batch effect
 fold_changes_base <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=G_ups, G_downs=G_downs, bioFC=bio_fold, batchFC=1)
@@ -69,6 +70,7 @@ size_mat <- constructSizeMatrix(G=length(fasta), size_vec=c(size_1, size_1, size
 
 
 ####  Run pipeline
+predDEgenes_edgeR_unadj <- predDEgenes_edgeR_fdr <- predDE_edgeR_resdfs <- list()
 for(iter in 1:iterations){
   cat(paste("\nSimulation", iter, '\n'))
   if(dir.exists(exp_name)){unlink(exp_name, recursive=TRUE)}
@@ -84,8 +86,12 @@ for(iter in 1:iterations){
   load(file.path(exp_name, "sim_counts_matrix.rda"))
   cts <- counts_matrix; rm(counts_matrix)
   rownames(cts) <- paste0("gene", 1:nrow(cts))
+  
   #DE ground truth vectors
   de_ground_truth <- rownames(cts)[de_ground_truth_ind]
+  true_ups <- rownames(cts)[G_ups]
+  true_downs <- rownames(cts)[G_downs]
+  true_nulls <- rownames(cts)[G_nulls]
   
   ## simulate baseline (no batch effect) data - independently using theoretical values for parameters
   simulate_experiment(fasta_file, reads_per_transcript=readspertx, size=size_mat_base, 
@@ -99,10 +105,13 @@ for(iter in 1:iterations){
   rownames(counts_base_indi) <- paste0("gene", 1:nrow(counts_base_indi))
   
   ## simulate baseline (no batch effect) data - match quantiles
-  fc_batch <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=G_ups, G_downs=G_downs, bioFC=1, batchFC=batch_fold)
-  fc_batch_mat <- constructFCSampleMatrix(fc_batch, batch=batch, group=group)
-  cts_meanadj <- round(cts/fc_batch_mat)
-  counts_base_quant <- try(quantDisp(cts_meanadj, batch=batch, group=group, DE_ind=de_ground_truth_ind))
+  # fc_batch <- constructFCMatrix(G=length(fasta), n_group=4, G_ups=G_ups, G_downs=G_downs, bioFC=1, batchFC=batch_fold)
+  # fc_batch_mat <- constructFCSampleMatrix(fc_batch, batch=batch, group=group)
+  # cts_meanadj <- round(cts/fc_batch_mat)
+  # counts_base_quant <- try(quantDisp(cts_meanadj, batch=batch, group=group, DE_ind=de_ground_truth_ind))
+  
+  rm(list=ls())
+  load("test.RData")
   
   
   ####  DE analysis 
@@ -119,17 +128,17 @@ for(iter in 1:iterations){
   
   
   ## On baseline dataset without batch effect - quantile baseline 
-  if(class(counts_base_quant)=="matrix" & !any(is.infinite(counts_base_quant))){
-    # edgeR
-    de_called02 <- edgeR_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
-    perf_stats02 <- perfStats(called_vec=de_called02$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
-    perf_stats02_fdr <- perfStats(called_vec=de_called02$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
-    
-    # DESeq2
-    de_called02_deseq <- DESeq2_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
-    perf_stats02_deseq <- perfStats(called_vec=de_called02_deseq$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
-    perf_stats02_deseq_fdr <- perfStats(called_vec=de_called02_deseq$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
-  }else{perf_stats02 <- perf_stats02_fdr <- perf_stats02_deseq <- perf_stats02_deseq_fdr <- rep(NA, 3)}
+  # if(class(counts_base_quant)=="matrix" & !any(is.infinite(counts_base_quant))){
+  #   # edgeR
+  #   de_called02 <- edgeR_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)  
+  #   perf_stats02 <- perfStats(called_vec=de_called02$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
+  #   perf_stats02_fdr <- perfStats(called_vec=de_called02$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
+  #   
+  #   # DESeq2
+  #   de_called02_deseq <- DESeq2_DEpipe(counts_mat=counts_base_quant, batch=batch, group=group, include.batch=FALSE, alpha=alpha)
+  #   perf_stats02_deseq <- perfStats(called_vec=de_called02_deseq$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
+  #   perf_stats02_deseq_fdr <- perfStats(called_vec=de_called02_deseq$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
+  # }else{perf_stats02 <- perf_stats02_fdr <- perf_stats02_deseq <- perf_stats02_deseq_fdr <- rep(NA, 3)}
   
   
   ## On counts with batch effect 
@@ -170,6 +179,11 @@ for(iter in 1:iterations){
   perf_stats3 <- perfStats(called_vec=de_called3, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
   de_called3_fdr <- rownames(cts)[padj_seq < alpha]
   perf_stats3_fdr <- perfStats(called_vec=de_called3_fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
+ 
+  de_called3 <- list(unadj=rownames(cts)[pval_seq < alpha], fdr=rownames(cts)[padj_seq < alpha], 
+                     de_res=data.frame(PValue=pval_seq, FDR=padj_seq), design=model.matrix(~as.factor(group)))
+  de_called3_deseq <- list(unadj=rownames(cts)[pval_seq < alpha], fdr=rownames(cts)[padj_seq < alpha], 
+                           de_res=data.frame(pvalue=pval_seq, padj=padj_seq), design=model.matrix(~as.factor(group)))
   
   
   ## On adjusted count - ComBat-seq 
@@ -186,7 +200,7 @@ for(iter in 1:iterations){
   
   
   ## Compare with RUVseq 
-  uvseq <- RUVg(cts, cIdx=setdiff(1:nrow(cts), de_ground_truth_ind)[1:10], k=1)
+  uvseq <- RUVg(cts, cIdx=sample(G_nulls,10,replace=F), k=1)
   # edgeR
   de_called6 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=FALSE, alpha=alpha, covar=uvseq$W)  
   perf_stats6 <- perfStats(called_vec=de_called6$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(cts))
@@ -216,7 +230,7 @@ for(iter in 1:iterations){
   ####  Collect and output results
   ## Unadjusted P values
   DE_res <- matrix(c(perf_stats01, perf_stats01_deseq, # baseline - indipendent simulation
-                     perf_stats02, perf_stats02_deseq, # baseline - quantile fix dispersion
+                     #perf_stats02, perf_stats02_deseq, # baseline - quantile fix dispersion
                      perf_stats1, perf_stats1_deseq,  # data with batch effect
                      perf_stats2, perf_stats2_deseq,  # one-step approaches
                      perf_stats3,   # current combat
@@ -227,7 +241,7 @@ for(iter in 1:iterations){
   rownames(DE_res) <- names(perf_stats01)
   ## FDR adjusted Q values
   DE_res_fdr <- matrix(c(perf_stats01_fdr, perf_stats01_deseq_fdr, # baseline - indipendent simulation
-                         perf_stats02_fdr, perf_stats02_deseq_fdr, # baseline - quantile fix dispersion
+                         #perf_stats02_fdr, perf_stats02_deseq_fdr, # baseline - quantile fix dispersion
                          perf_stats1_fdr, perf_stats1_deseq_fdr,  # data with batch effect
                          perf_stats2_fdr, perf_stats2_deseq_fdr,  # one-step approaches
                          perf_stats3_fdr,   # current combat
@@ -236,21 +250,36 @@ for(iter in 1:iterations){
                          perf_stats7_fdr, perf_stats7_deseq_fdr),  # SVAseq
                        nrow=3, byrow=FALSE)
   rownames(DE_res_fdr) <- names(perf_stats01_fdr)
-  colnames(DE_res) <- colnames(DE_res_fdr) <- c("BaseIndi.edgeR", "BaseIndi.DESeq2", "BaseQuant.edgeR", "BaseQuant.DESeq2",
+  colnames(DE_res) <- colnames(DE_res_fdr) <- c("BaseIndi.edgeR", "BaseIndi.DESeq2", #"BaseQuant.edgeR", "BaseQuant.DESeq2",
                         "Batch.edgeR", "Batch.DESeq2", "OneStep.edgeR", "OneStep.DESeq2", "ComBat.lm", 
                         "ComBatseq.edgeR", "ComBatseq.DESeq2", 
                         "RUVseq.edgeR", "RUVseq.DESeq2", "SVAseq.edgeR", "SVAseq.DESeq2")
   DE_res <- as.data.frame(DE_res); DE_res_fdr <- as.data.frame(DE_res_fdr)
   
+  
   first.file <- !file.exists(sprintf('fpr_%s.csv', exp_name))
   # for unadjusted p values, write out TPR & FPR
-  write.table(DE_res["fpr", ], sprintf('fpr_%s.csv', exp_name), 
+  write.table(DE_res["fpr", ], sprintf('fpr_%s.csv', exp_name),
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # type 1 error rate (false positive rate)
-  write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name), 
+  write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name),
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # power (true positive rate)
   # for FDR adjusted values, write out TPR & Precision
-  write.table(DE_res_fdr["tpr", ], sprintf('tprADJ_%s.csv', exp_name), 
+  write.table(DE_res_fdr["tpr", ], sprintf('tprADJ_%s.csv', exp_name),
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # power (true positive rate)
-  write.table(DE_res_fdr["prec", ], sprintf('precADJ_%s.csv', exp_name), 
+  write.table(DE_res_fdr["prec", ], sprintf('precADJ_%s.csv', exp_name),
               append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # precision (1-FDR:false discovery rate)
+  
+  
+  ## Organize and cache DE results
+  predDEgenes_edgeR_unadj[[iter]] <- list(base=de_called01$unadj, batch=de_called1$unadj, one.step=de_called2$unadj, 
+                                          combat.lm=de_called3$unadj, combatseq=de_called5$unadj, 
+                                          ruvseq=de_called6$unadj, svaseq=de_called7$unadj)
+  predDEgenes_edgeR_fdr[[iter]] <- list(base=de_called01$fdr, batch=de_called1$fdr, one.step=de_called2$fdr, 
+                                        combat.lm=de_called3$fdr, combatseq=de_called5$fdr, 
+                                        ruvseq=de_called6$fdr, svaseq=de_called7$fdr)
+  predDE_edgeR_resdfs[[iter]] <- list(base=de_called01$de_res, batch=de_called1$de_res, one.step=de_called2$de_res, 
+                                      combat.lm=de_called3$de_res, combatseq=de_called5$de_res, 
+                                      ruvseq=de_called6$de_res, svaseq=de_called7$de_res)
 }
+
+save(predDEgenes_edgeR_unadj, predDEgenes_edgeR_fdr, predDE_edgeR_resdfs, file="DE_results.RData")

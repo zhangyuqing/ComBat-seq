@@ -34,7 +34,7 @@ rm(list=ls())
 sapply(c("ggplot2", "gridExtra", "reshape2", "ggpubr"), require, character.only=TRUE)
 results_dir <- "~/Google Drive/ComBat_seq/DE_disp_confounding_base"
 #results_dir <- "~/yuqingz/ComBat_seq/DE_disp_confounding_base"
-N_samples <- 20
+N_samples <- 60
 
 disp_level_vec <- 1:5
 confounding_level_vec <- seq(from=0.5,to=0.2,by=-0.1)

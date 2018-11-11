@@ -1,3 +1,4 @@
+## library size difference
 constructFCMatrix <- function(G, n_group, G_ups, G_downs, bioFC, batchFC){
   fold_changes <- matrix(NA, nrow=G, ncol=n_group) 
   fold_changes[G_ups, ] <- matrix(rep(c(1, bioFC, batchFC, bioFC*batchFC), length(G_ups)), ncol=n_group, byrow=TRUE)  # up-regulated
@@ -7,12 +8,10 @@ constructFCMatrix <- function(G, n_group, G_ups, G_downs, bioFC, batchFC){
   return(fold_changes)
 }
 
-
 constructSizeMatrix <- function(G, size_vec){
   size_mat <- matrix(rep(size_vec, G), ncol=length(size_vec), byrow=TRUE)
   return(size_mat)
 }
-
 
 constructFCSampleMatrix <- function(fc_batch, batch, group){
   fc_batch_mat <- matrix(NA, nrow=nrow(fc_batch), ncol=length(batch))
@@ -22,6 +21,32 @@ constructFCSampleMatrix <- function(fc_batch, batch, group){
   fc_batch_mat[, batch==2&group==1] <- fc_batch[,4]
   return(fc_batch_mat)
 }
+
+
+## library composition difference
+#G=length(fasta); FC_group=c(0,1,0,1); bioFC=bio_fold; batchFC=batch_fold
+constructFCMatrix_Comp <- function(G, FC_group, G_ups, G_downs, bioFC, batchFC){
+  fold_changes <- matrix(NA, nrow=G, ncol=length(FC_group))
+  
+  # randomly split all genes into 2 groups - one increased in batch 2 vs 1, the other decreased
+  batch_genes_split <- sample(c(1,2), G, replace=TRUE)
+  batch_up_genes <- which(batch_genes_split==1)
+  batch_down_genes <- which(batch_genes_split==2)
+  
+  # batch fold changes
+  fold_changes[batch_up_genes, ] <- matrix(rep(c(1, 1, batchFC, batchFC), length(batch_up_genes)), 
+                                           nrow=length(batch_up_genes), byrow=TRUE)
+  fold_changes[batch_down_genes, ] <- matrix(rep(c(batchFC, batchFC, 1, 1), length(batch_down_genes)), 
+                                             nrow=length(batch_down_genes), byrow=TRUE)
+  
+  # add biological fold changes
+  fold_changes[G_ups, FC_group==1] <- fold_changes[G_ups, FC_group==1] * bioFC
+  fold_changes[G_downs, FC_group==0] <- fold_changes[G_downs, FC_group==0] * bioFC  
+    
+  return(fold_changes)
+}
+
+
 
 
 estimateMLEDisp <- function(x, group){
@@ -74,11 +99,14 @@ edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=N
   y <- DGEList(counts=counts_mat)
   y <- calcNormFactors(y, method="TMM")
   if(include.batch){
+    cat("Including batch as covariate\n")
     design <- model.matrix(~ as.factor(group) + as.factor(batch))
   }else{
+    cat("Default group as model matrix\n")
     design <- model.matrix(~as.factor(group))
   }
   if(!is.null(covar)){
+    cat("Including surrogate variables or unwanted variation variables\n")
     design <- cbind(design, covar)
   }
   y <- estimateDisp(y, design)
@@ -88,24 +116,24 @@ edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=N
   
   de_called <- rownames(de_res)[de_res$PValue < alpha]
   de_called_fdr <- rownames(de_res)[de_res$FDR < alpha]
-  return(list(unadj=de_called, fdr=de_called_fdr))
+  return(list(unadj=de_called, fdr=de_called_fdr, de_res=de_res, design=design))
 }
 
 
 DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=NULL){
   if(include.batch){
-    print("Including batch as covariate")
+    cat("Including batch as covariate\n")
     col_data <- data.frame(Batch=as.factor(batch), Group=as.factor(group))
     design_formula <- ~Batch+Group
   }else if(!is.null(covar)){
-    print("Including surrogate variables or unwanted variation variables")
+    cat("Including surrogate variables or unwanted variation variables\n")
     col_data <- cbind(model.matrix(~as.factor(group)), covar)
     colnames(col_data)[2:ncol(col_data)] <- c("Group", paste0("Covar", 1:(ncol(col_data)-2)))
     rownames(col_data) <- colnames(counts_mat)
     col_data <- as.data.frame(col_data); col_data$Group <- as.factor(col_data$Group); col_data <- col_data[, -1]
     design_formula <- as.formula(paste("~", paste(colnames(col_data), collapse="+")))
   }else{
-    print("Default group as model matrix")
+    cat("Default group as model matrix\n")
     col_data <- data.frame(Group=as.factor(group))
     design_formula <- ~Group
   }
@@ -116,7 +144,7 @@ DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=
   
   de_called <- rownames(de_res)[de_res$pvalue < alpha]
   de_called_fdr <- rownames(de_res)[de_res$padj < alpha]
-  return(list(unadj=de_called, fdr=de_called_fdr))
+  return(list(unadj=de_called, fdr=de_called_fdr, de_res=de_res, design=design))
 }
 
 
@@ -132,4 +160,13 @@ perfStats <- function(called_vec, ground_truth_vec, N_genes){
   
   return(c(tpr=tpr, fpr=fpr, prec=prec))
 }
+
+
+cancelLibsizeEffect <- function(count_matrix){
+  lib_sizes <- colSums(count_matrix)
+  do.call(cbind, lapply(1:ncol(count_matrix), function(i){
+    count_matrix[,i]/lib_sizes[i]
+  }))
+}
+
 
