@@ -17,8 +17,9 @@ We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative bin
 
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
-sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend"), require, character.only=TRUE)
+sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2"), require, character.only=TRUE)
 source("../ComBat_seq.R"); source("../helper_seq.R")
+source("sim_DEpipe_helpers.R")
 set.seed(123)
 
 ## Simulate count matrix and batch factor
@@ -167,6 +168,70 @@ adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend
                            col=group[order.dendrogram(adj_dend)]+2)
 plot(adj_dend)  
 ```
+
+
+## Differential Expression
+
+### edgeR
+
+```{r, echo=FALSE, results='hide'}
+de_ground_truth <- rownames(counts)[c(1:50, 1001:1050)]
+
+de_called <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called_onestep <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+  
+de_called_adj <- edgeR_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+```
+
+```{r, echo=FALSE}
+stats_df <- data.frame(Unadj=perf_stats[1:2], OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
+stats_fdr_df <- data.frame(Unadj=perf_stats_fdr[c(1,3)], OneStep=onestep_perf_stats_fdr[c(1,3)],
+                           CombatSeq=adj_perf_stats_fdr[c(1,3)])
+stats_fdr_df[2, ] <- 1 - stats_fdr_df[2, ]; rownames(stats_fdr_df)[2] <- "fdr"
+cat("Performance using un-adjusted P values\n")
+print(round(stats_df,2))
+cat("Performance using FDR corrected p values\n")
+print(round(stats_fdr_df,2))
+```
+
+
+### DESeq2
+
+```{r, echo=FALSE, results='hide'}
+rm(de_called, de_called_adj, de_called_onestep, perf_stats, perf_stats_fdr, 
+   onestep_perf_stats, onestep_perf_stats_fdr, adj_perf_stats, adj_perf_stats_fdr)
+
+de_called <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called_onestep <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+  
+de_called_adj <- DESeq2_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+```
+
+```{r, echo=FALSE}
+stats_df <- data.frame(Unadj=perf_stats[1:2], OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
+stats_fdr_df <- data.frame(Unadj=perf_stats_fdr[c(1,3)], OneStep=onestep_perf_stats_fdr[c(1,3)],
+                           CombatSeq=adj_perf_stats_fdr[c(1,3)])
+stats_fdr_df[2, ] <- 1 - stats_fdr_df[2, ]; rownames(stats_fdr_df)[2] <- "fdr"
+cat("Performance using un-adjusted P values\n")
+print(round(stats_df,2))
+cat("Performance using FDR corrected p values\n")
+print(round(stats_fdr_df,2))
+```
+
 
 
 ## Thoughts
