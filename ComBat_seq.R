@@ -15,10 +15,10 @@
 #' @export
 #' 
 
-ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none"){
+ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #, normalize="none"){
   ########  Preparation  ########  
   library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
-  dge_obj <- DGEList(counts=counts, group=group)
+  dge_obj <- DGEList(counts=counts)
   
   ## Prepare characteristics on batches
   batch <- as.factor(batch)
@@ -41,6 +41,10 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
     cat("Using null model in ComBat-seq.\n")
     mod <- model.matrix(~1, data=as.data.frame(t(counts)))
   }
+  # drop intercept in covariate model
+  if(!is.null(covar_mod)){covar_mod <- covar_mod[, !apply(covar_mod, 2, function(x){all(x==1)})]}
+  # bind with biological condition of interest
+  mod <- cbind(mod, covar_mod)
   # combine
   design <- cbind(batchmod, mod)
   
@@ -65,6 +69,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
 
   
   ########  Estimate gene-wise dispersions within each batch  ########
+  cat("Estimating dispersions\n")
   ## Estimate common dispersion within each batch as an initial value
   disp_common <- sapply(1:n_batch, function(i){
     if(n_batches[i]==1){
@@ -103,6 +108,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   
     
   ########  Estimate parameters from NB GLM  ########
+  cat("Fitting the GLM model\n")
   glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
@@ -120,6 +126,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   
   
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
+  cat("Posterior estimates for parameters\n")
   monte_carlo_res <- lapply(1:n_batch, function(ii){
     monte_carlo_int_NB(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
                        gamma=gamma_hat[, ii], phi=phi_hat[, ii])
@@ -145,6 +152,7 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   
   
   ########  Adjust the data  ########  
+  cat("Adjusting the data\n")
   adjust_counts <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
   for(kk in 1:n_batch){
     counts_sub <- counts[, batches_ind[[kk]]]
@@ -169,6 +177,35 @@ ComBat_seq <- function(counts, batch, group, full_mod=TRUE){  #, normalize="none
   #     }
   #   }
   # }
+  
+  # design matrix
+  # cat("\n########  Design matrix  ########\n")
+  # cat("Partial design matrix:\n"); print(head(design))
+  # # dispersion
+  # cat("\n\n########  Dispersion  ########\n")
+  # cat("Estimated common dispersion:\n"); print(round(disp_common,3))
+  # cat("\nAverage estimated gene-wise dispersion:\n"); print(round(sapply(genewise_disp_lst, mean), 3))
+  # # GLM model
+  # cat("\n\n########  GLM model coefs  ########\n")
+  # cat("Coefficients (model 1):\n"); print(head(glm_f$coefficients)); cat('...\n'); print(tail(glm_f$coefficients))
+  # cat("\nSanity check: estimated batch mean in gene group 1:\n"); print(exp(colMeans(glm_f$coefficients[1:1000,1:n_batch]))*mean(colSums(counts)))
+  # cat("\nAverage background count alpha:\n"); print(mean(alpha_g)); print(exp(mean(alpha_g))*mean(colSums(counts)))
+  # cat("\nCoefficients (model 2):\n"); print(head(glm_f2$coefficients)); cat('...\n'); print(tail(glm_f2$coefficients))
+  # # Posterior estimates of batch parameters
+  # cat("\n\n########  Batch effect estimates  ########\n")
+  # cat("Prior average exp(gamma) in gene group 1:\n")
+  # cat("NOTE: adjusted mean = original mean / exp(gamma) \n")
+  # print(exp(colMeans(gamma_hat[1:1000,])))
+  # cat("\nPosterior average exp(gamma) in gene group 1:\n") 
+  # print(exp(colMeans(gamma_star_mat[1:1000,])))
+  # cat("\nPrior average dispersion:\n")
+  # print(colMeans(phi_hat))
+  # cat("\nPosterior average dispersion:\n")
+  # print(colMeans(phi_star_mat))
+  # cat("\nBatch-free mean mu:\n")
+  # print(mean(mu_star[1001:2000,batch=="A"])); print(mean(mu_star[1001:2000,batch=="B"]))
+  # cat("\nBatch-free dispersion phi:\n")
+  # print(mean(phi_star))
   
   dimnames(adjust_counts) <- dimnames(counts)
   return(adjust_counts)

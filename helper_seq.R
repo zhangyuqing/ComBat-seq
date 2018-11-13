@@ -6,17 +6,16 @@ vec2mat <- function(vec, n_times){
 
 # Monte Carlo integration function
 monte_carlo_int_NB <- function(dat, mu, gamma, phi){
-  gamma_star <- phi_star <- rep(NA, nrow(dat))
-  for(i in 1:nrow(dat)){
+  pos_res <- lapply(1:nrow(dat), function(i){
     ph <- phi[-i]		
     m <- mu[-i,!is.na(dat[i,])]
     x <- dat[i,!is.na(dat[i,])]
     LH <- sapply(1:(nrow(dat)-1), function(j){prod(dnbinom(x, mu=m[j,], size=1/ph[j]))})
     LH[is.nan(LH)]=0
-    gamma_star[i] <- sum(gamma[-i]*LH)/sum(LH)
-    phi_star[i] <- sum(phi[-i]*LH)/sum(LH)
-  }
-  res <- list(gamma_star=gamma_star, phi_star=phi_star)	
+    c(gamma.star=sum(gamma[-i]*LH)/sum(LH), phi.star=sum(phi[-i]*LH)/sum(LH))
+  })
+  pos_res <- do.call(rbind, pos_res)
+  res <- list(gamma_star=pos_res[, "gamma.star"], phi_star=pos_res[, "phi.star"])	
   return(res)
 } 
 
