@@ -29,7 +29,7 @@ balanced <- FALSE  #as.logical(command_args[7])
 coverage <- 5 #as.numeric(command_args[8])  
 
 iterations <- 100 #5  #number of simulations to run
-alpha <- 0.05
+alpha <- as.numeric(command_args[4]) #0.05
 # exp_name <- paste0("sim", factor_exam, "_bio", bio_fold, "_batch", batch_fold, "_sizes", size_1, '_', size_2,
 #                    "_N", N_total_sample, ifelse(balanced, "_B", "_U"), "_depth", coverage)
 exp_name <- paste0("sim", factor_exam, "_N", N_total_sample, "_dispFC", disp_fold_level, "_percent", confounding_level)

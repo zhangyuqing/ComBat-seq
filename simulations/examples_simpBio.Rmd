@@ -24,19 +24,19 @@ set.seed(123)
 
 ## Simulate count matrix and batch factor
 y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y1_case <- matrix(rnbinom(50*5, mu=15, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
 y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
 
 y2_ctrl <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y2_case <- matrix(rnbinom(50*5, mu=40, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y2_case <- matrix(rnbinom(50*5, mu=30, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
 y2_null <- matrix(rnbinom(950*10, mu=20, size=100), ncol=10)
 
 y3_ctrl <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y3_case <- matrix(rnbinom(50*5, mu=40, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y3_case <- matrix(rnbinom(50*5, mu=30, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
 y3_null <- matrix(rnbinom(950*10, mu=20, size=20), ncol=10)
 
 y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y4_case <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y4_case <- matrix(rnbinom(50*5, mu=15, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
 y4_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
 
 counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
@@ -51,6 +51,9 @@ batch <- c(rep("B", ncol(y1_ctrl)+ncol(y1_case)),
 group <- c(rep(0, ncol(y1_ctrl)), rep(1, ncol(y1_case)),
            rep(0, ncol(y2_ctrl)), rep(1, ncol(y2_case)))
 full_mod <- TRUE
+
+true_de_1 <- 1:50; true_de_2 <- 1001:1050
+de_ground_truth <- rownames(counts)[c(true_de_1, true_de_2)]
 ```
 
 ```{r, echo=FALSE, results='hide'}
@@ -175,8 +178,6 @@ plot(adj_dend)
 ### edgeR
 
 ```{r, echo=FALSE, results='hide'}
-de_ground_truth <- rownames(counts)[c(1:50, 1001:1050)]
-
 de_called <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
 perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
@@ -231,7 +232,6 @@ print(round(stats_df,2))
 cat("Performance using FDR corrected p values\n")
 print(round(stats_fdr_df,2))
 ```
-
 
 
 ## Thoughts

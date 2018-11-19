@@ -1,0 +1,304 @@
+---
+title: "Application of ComBat-seq on simulated dataset"
+subtitle: "DE with library composition batch effects"
+author: Yuqing Zhang
+date: "`r Sys.Date()`"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+---
+
+## Design of the study
+
+We simulated a **(2000 gene $\times$ 20 sample)** count matrix from negative binomial distributions. The dataset contains **2** batches, with **10** samples in each batch, and **biological effect - a 2-fold change between 2 condition groups**. 
+
+<img src="../../study_design_2.png" width="450">
+
+
+## Simulate datasets 
+
+We first simulate the dataset with batch effect. Then, we apply ComBat-seq to the simulated dataset. Some intermediate results of ComBat-seq are printed out to help us better understand how this function works. Running time of ComBat-seq is also recorded.
+
+```{r, echo=FALSE, results='hide'}
+rm(list=ls())
+sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2"), require, character.only=TRUE)
+source("../ComBat_seq.R"); source("../helper_seq.R")
+source("sim_DEpipe_helpers.R")
+set.seed(123)
+
+## Simulate count matrix and batch factor
+y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+y1_case <- matrix(rnbinom(50*5, mu=15, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+
+y2_ctrl <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y2_case <- matrix(rnbinom(50*5, mu=30, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y2_null <- matrix(rnbinom(950*10, mu=20, size=100), ncol=10)
+
+y3_ctrl <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+y3_case <- matrix(rnbinom(50*5, mu=30, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y3_null <- matrix(rnbinom(950*10, mu=20, size=20), ncol=10)
+
+y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y4_case <- matrix(rnbinom(50*5, mu=15, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y4_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
+
+counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
+                cbind(y1_null, y2_null),
+                cbind(y3_ctrl, y3_case, y4_ctrl, y4_case),
+                cbind(y3_null, y4_null))
+rownames(counts) <- paste0("gene", 1:nrow(counts))
+colnames(counts) <- paste0("sample", 1:ncol(counts))
+
+batch <- c(rep("B", ncol(y1_ctrl)+ncol(y1_case)), 
+           rep("A", ncol(y2_ctrl)+ncol(y2_case))); table(batch)
+group <- c(rep(0, ncol(y1_ctrl)), rep(1, ncol(y1_case)),
+           rep(0, ncol(y2_ctrl)), rep(1, ncol(y2_case)))
+full_mod <- TRUE
+
+true_de_1 <- 1:50; true_de_2 <- 1001:1050
+de_ground_truth <- rownames(counts)[c(true_de_1, true_de_2)]
+```
+
+```{r, echo=FALSE}
+start_time <- Sys.time()
+adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
+end_time <- Sys.time()
+cat("\nRunning time of ComBat-seq:\n")
+print(end_time - start_time)
+```
+
+For DE comparison, we use the estimated posterior "batch-free" distributions to simulate data without batch effect ("baseline" dataset), as an upper-bound for DE performance.
+
+```{r, echo=FALSE}
+set.seed(123)
+
+## Simulate baseline count matrix 
+y1_ctrl <- matrix(rnbinom(50*10, mu=14, size=1/0.03), ncol=10); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+y1_case <- matrix(rnbinom(50*10, mu=14*1.5, size=1/0.03), ncol=10); #mean(c(y1_case)); var(c(y1_case))
+y1_null <- matrix(rnbinom(950*20, mu=14, size=1/0.03), ncol=20)
+
+y2_ctrl <- matrix(rnbinom(50*10, mu=14, size=1/0.03), ncol=10); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y2_case <- matrix(rnbinom(50*10, mu=14*1.5, size=1/0.03), ncol=10); #mean(c(y2_case)); var(c(y2_case))
+y2_null <- matrix(rnbinom(950*20, mu=14, size=1/0.03), ncol=20)
+
+counts_base <- rbind(cbind(y1_ctrl, y1_case), y1_null, cbind(y2_ctrl, y2_case), y2_null)
+rownames(counts_base) <- paste0("gene", 1:nrow(counts_base))
+colnames(counts_base) <- paste0("sample", 1:ncol(counts_base))
+```
+
+
+
+## Differential Expression
+
+### edgeR
+
+```{r, echo=FALSE, results='hide'}
+de_called_base <- edgeR_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+base_perf_stats <- perfStats(called_vec=de_called_base$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+base_perf_stats_fdr <- perfStats(called_vec=de_called_base$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called_onestep <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+  
+de_called_adj <- edgeR_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+```
+
+```{r, echo=FALSE}
+stats_df <- data.frame(Base=base_perf_stats[1:2], Unadj=perf_stats[1:2], 
+                       OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
+stats_fdr_df <- data.frame(Base=base_perf_stats_fdr[c(1,3)], Unadj=perf_stats_fdr[c(1,3)], 
+                           OneStep=onestep_perf_stats_fdr[c(1,3)], CombatSeq=adj_perf_stats_fdr[c(1,3)])
+stats_fdr_df[2, ] <- 1 - stats_fdr_df[2, ]; rownames(stats_fdr_df)[2] <- "fdr"
+cat("Performance using un-adjusted P values\n")
+print(round(stats_df,2))
+cat("Performance using FDR corrected p values\n")
+print(round(stats_fdr_df,2))
+```
+
+
+### DESeq2
+
+```{r, echo=FALSE, results='hide'}
+rm(de_called_base, de_called, de_called_adj, de_called_onestep, base_perf_stats, base_perf_stats_fdr,
+   perf_stats, perf_stats_fdr, onestep_perf_stats, onestep_perf_stats_fdr, adj_perf_stats, adj_perf_stats_fdr)
+
+de_called_base <- DESeq2_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+base_perf_stats <- perfStats(called_vec=de_called_base$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+base_perf_stats_fdr <- perfStats(called_vec=de_called_base$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+
+de_called_onestep <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+  
+de_called_adj <- DESeq2_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
+```
+
+```{r, echo=FALSE}
+stats_df <- data.frame(Base=base_perf_stats[1:2], Unadj=perf_stats[1:2], 
+                       OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
+stats_fdr_df <- data.frame(Base=base_perf_stats_fdr[c(1,3)], Unadj=perf_stats_fdr[c(1,3)], 
+                           OneStep=onestep_perf_stats_fdr[c(1,3)], CombatSeq=adj_perf_stats_fdr[c(1,3)])
+stats_fdr_df[2, ] <- 1 - stats_fdr_df[2, ]; rownames(stats_fdr_df)[2] <- "fdr"
+cat("Performance using un-adjusted P values\n")
+print(round(stats_df,2))
+cat("Performance using FDR corrected p values\n")
+print(round(stats_fdr_df,2))
+```
+
+
+
+## Visualization 
+
+### Distribution of counts{.tabset}
+
+Library sizes (average counts in each sample) are roughly similar across batches. The biologically activated samples have larger library sizes than the control samples. The dispersion parameters are different in two batches (Batch B: 0.05, Batch A: 0.01).
+
+#### Baseline
+
+```{r, echo=FALSE}
+counts_base_df_mlt <- data.frame(Batch=NA, melt(counts_base))
+counts_base_df_mlt$Batch[counts_base_df_mlt$Var2 %in% colnames(counts_base)[batch=="A"]] <- "A"
+counts_base_df_mlt$Batch[counts_base_df_mlt$Var2 %in% colnames(counts_base)[batch=="B"]] <- "B"
+counts_base_df_mlt$Batch <- as.factor(counts_base_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(counts_base_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of baseline counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+```{r, echo=FALSE}
+base_mean_counts_1 <- colMeans(counts_base[1:1000, ])
+base_mean_counts_2 <- colMeans(counts_base[1001:2000, ])
+
+base_mean_counts_df <- data.frame(samples=names(base_mean_counts_1), type1=base_mean_counts_1, type2=base_mean_counts_2)
+base_mean_counts_df_mlt <- melt(base_mean_counts_df, id.vars="samples")
+colnames(base_mean_counts_df_mlt)[2] <- "Type"
+base_mean_counts_df_mlt$samples <- factor(base_mean_counts_df_mlt$samples, levels=colnames(counts_base))
+
+ggplot(data=base_mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
+  geom_line(aes(color=Type)) +
+  geom_point() +
+  labs(title="Average baseline counts for two types of genes", x="Samples", y="Average baseline counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+#### Counts with batch effect
+
+```{r, echo=FALSE, results='hide'}
+counts_df_mlt <- data.frame(Batch=NA, melt(counts))
+counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="A"]] <- "A"
+counts_df_mlt$Batch[counts_df_mlt$Var2 %in% colnames(counts)[batch=="B"]] <- "B"
+counts_df_mlt$Batch <- as.factor(counts_df_mlt$Batch)
+```
+
+```{r, echo=FALSE}
+## Boxplot of unadjusted counts in each sample
+ggplot(counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+```{r, echo=FALSE}
+mean_counts_1 <- colMeans(counts[1:1000, ])
+mean_counts_2 <- colMeans(counts[1001:2000, ])
+
+mean_counts_df <- data.frame(samples=names(mean_counts_1), type1=mean_counts_1, type2=mean_counts_2)
+mean_counts_df_mlt <- melt(mean_counts_df, id.vars="samples")
+colnames(mean_counts_df_mlt)[2] <- "Type"
+mean_counts_df_mlt$samples <- factor(mean_counts_df_mlt$samples, levels=colnames(counts))
+
+ggplot(data=mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
+  geom_line(aes(color=Type)) +
+  geom_point() +
+  labs(title="Average counts for two types of genes", x="Samples", y="Average counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+#### Adjusted counts
+
+```{r, echo=FALSE}
+adj_counts_df_mlt <- data.frame(Batch=NA, melt(adj_counts))
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="A"]] <- "A"
+adj_counts_df_mlt$Batch[adj_counts_df_mlt$Var2 %in% colnames(adj_counts)[batch=="B"]] <- "B"
+adj_counts_df_mlt$Batch <- as.factor(adj_counts_df_mlt$Batch)
+
+## Boxplot of the adjusted counts in each sample
+ggplot(adj_counts_df_mlt, aes(x=Var2, y=value, fill=Batch)) + 
+  geom_boxplot() +
+  labs(title="Distribution of adjusted counts in each sample",x="Samples", y = "Counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+```{r, echo=FALSE}
+adj_mean_counts_1 <- colMeans(adj_counts[1:1000, ])
+adj_mean_counts_2 <- colMeans(adj_counts[1001:2000, ])
+
+adj_mean_counts_df <- data.frame(samples=names(adj_mean_counts_1), type1=adj_mean_counts_1, type2=adj_mean_counts_2)
+adj_mean_counts_df_mlt <- melt(adj_mean_counts_df, id.vars="samples")
+colnames(adj_mean_counts_df_mlt)[2] <- "Type"
+adj_mean_counts_df_mlt$samples <- factor(adj_mean_counts_df_mlt$samples, levels=colnames(adj_counts))
+
+ggplot(data=adj_mean_counts_df_mlt, aes(x=samples, y=value, group=Type)) +
+  geom_line(aes(color=Type)) +
+  geom_point() +
+  labs(title="Average adjusted counts for two types of genes", x="Samples", y="Average adjusted counts") +
+  theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+```
+
+
+### Clustering of samples{.tabset}
+
+#### Baseline
+
+```{r, echo=FALSE}
+hc_base <- hclust(dist(t(counts_base)))
+dend_base <- as.dendrogram(hc_base)
+dend_base <- color_branches(dend_base, groupLabels=batch[order.dendrogram(dend_base)], 
+                            col=group[order.dendrogram(dend_base)]+2)
+plot(dend_base)  
+```
+
+#### Before adjustment
+
+```{r, echo=FALSE}
+hc <- hclust(dist(t(counts)))
+dend <- as.dendrogram(hc)
+dend <- color_branches(dend, groupLabels=batch[order.dendrogram(dend)], 
+                       col=group[order.dendrogram(dend)]+2)
+plot(dend)  
+```
+
+#### After adjustment
+
+```{r, echo=FALSE}
+adj_hc <- hclust(dist(t(adj_counts)))
+adj_dend <- as.dendrogram(adj_hc)
+adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend)], 
+                           col=group[order.dendrogram(adj_dend)]+2)
+plot(adj_dend)  
+```
+
+
+
+## Thoughts
+
+* 

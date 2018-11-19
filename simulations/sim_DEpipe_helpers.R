@@ -22,7 +22,6 @@ constructFCSampleMatrix <- function(fc_batch, batch, group){
   return(fc_batch_mat)
 }
 
-
 ## library composition difference
 #G=length(fasta); FC_group=c(0,1,0,1); bioFC=bio_fold; batchFC=batch_fold
 constructFCMatrix_Comp <- function(G, FC_group, G_ups, G_downs, bioFC, batchFC){
@@ -45,8 +44,6 @@ constructFCMatrix_Comp <- function(G, FC_group, G_ups, G_downs, bioFC, batchFC){
     
   return(fold_changes)
 }
-
-
 
 
 estimateMLEDisp <- function(x, group){
@@ -95,7 +92,9 @@ matchDisp <- function(x, disp, target.disp){
 }
 
 
-edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=NULL){
+#counts_mat=cts; include.batch=FALSE; alpha.unadj=alpha_unadj; alpha.fdr=alpha_fdr
+edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha.unadj, alpha.fdr, covar=NULL){
+  cat("DE tool: edgeR\n")
   y <- DGEList(counts=counts_mat)
   y <- calcNormFactors(y, method="TMM")
   if(include.batch){
@@ -114,13 +113,14 @@ edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=N
   qlf <- glmQLFTest(fit, coef=2)
   de_res <- topTags(qlf, n=nrow(counts_mat))$table
   
-  de_called <- rownames(de_res)[de_res$PValue < alpha]
-  de_called_fdr <- rownames(de_res)[de_res$FDR < alpha]
+  de_called <- rownames(de_res)[de_res$PValue < alpha.unadj]
+  de_called_fdr <- rownames(de_res)[de_res$FDR < alpha.fdr]
   return(list(unadj=de_called, fdr=de_called_fdr, de_res=de_res, design=design))
 }
 
 
-DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=NULL){
+DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha.unadj, alpha.fdr, covar=NULL){
+  cat("DE tool: DESeq2\n")
   if(include.batch){
     cat("Including batch as covariate\n")
     col_data <- data.frame(Batch=as.factor(batch), Group=as.factor(group))
@@ -139,25 +139,51 @@ DESeq2_DEpipe <- function(counts_mat, batch, group, include.batch, alpha, covar=
   }
   
   dds <- DESeqDataSetFromMatrix(countData=counts_mat, colData=col_data, design=design_formula)
-  dds <- DESeq(dds)
+  dds <- DESeq(dds, quiet=TRUE)
   de_res <- results(dds, name="Group_1_vs_0")
   
-  de_called <- rownames(de_res)[de_res$pvalue < alpha]
-  de_called_fdr <- rownames(de_res)[de_res$padj < alpha]
-  return(list(unadj=de_called, fdr=de_called_fdr, de_res=de_res, design=design))
+  if(length(which(de_res$pvalue < alpha.unadj))>0){
+    de_called <- rownames(de_res)[which(de_res$pvalue < alpha.unadj)]
+  }else{de_called <- character(0)}
+  if(length(which(de_res$padj < alpha.fdr))>0){
+    de_called_fdr <- rownames(de_res)[which(de_res$padj < alpha.fdr)]
+  }else{de_called_fdr <- character(0)}
+  
+  return(list(unadj=de_called, fdr=de_called_fdr, de_res=de_res, 
+              design_formula=design_formula, col_data=col_data))
+}
+
+
+currComBat_lm_DEpipe <- function(cts, batch, group, alpha.unadj, alpha.fdr){
+  log_counts <- cpm(cts, log=TRUE)  # use logCPM to make data more normal
+  adj_counts <- ComBat(log_counts, batch=batch, mod=model.matrix(~as.factor(group)))
+  pval_seq <- apply(adj_counts, 1, function(x, group){
+    x_norm <- scale(x, center=TRUE, scale=TRUE)
+    fit3 <- lm(x_norm ~ as.factor(group))
+    return(summary(fit3)$coefficients[2, 4])
+  }, group=group)
+  padj_seq <- p.adjust(pval_seq, method="fdr")
+  
+  de_called <- list(unadj=rownames(cts)[pval_seq < alpha.unadj], fdr=rownames(cts)[padj_seq < alpha.fdr], 
+                    de_res=data.frame(PValue=pval_seq, FDR=padj_seq), design=model.matrix(~as.factor(group)))
+  return(de_called)
 }
 
 
 perfStats <- function(called_vec, ground_truth_vec, N_genes){
-  tp <- length(intersect(called_vec, ground_truth_vec))
-  fp <- length(setdiff(called_vec, ground_truth_vec)) 
-  N_DE <- length(ground_truth_vec)
-  N_nonDE <- N_genes - N_DE
+  if(length(called_vec)==0){
+    tpr <- fpr <- 0
+    prec <- NA
+  }else{
+    tp <- length(intersect(called_vec, ground_truth_vec))
+    fp <- length(setdiff(called_vec, ground_truth_vec)) 
+    N_DE <- length(ground_truth_vec)
+    N_nonDE <- N_genes - N_DE
     
-  tpr <- tp / N_DE
-  fpr <- fp / N_nonDE
-  prec <- tp / length(called_vec)
-  
+    tpr <- tp / N_DE
+    fpr <- fp / N_nonDE
+    prec <- tp / length(called_vec)
+  }
   return(c(tpr=tpr, fpr=fpr, prec=prec))
 }
 
@@ -168,5 +194,3 @@ cancelLibsizeEffect <- function(count_matrix){
     count_matrix[,i]/lib_sizes[i]
   }))
 }
-
-
