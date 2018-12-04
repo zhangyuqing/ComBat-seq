@@ -6,8 +6,8 @@ if(demo){
   script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
   source(file.path(script_dir, "real_data_app/exprep_helpers.R"))
 }else{
-  #setwd("~/yuqingz/ComBat_seq/real_data_app/")
-  setwd("/restricted/projectnb/combat/work/yuqingz/ComBat-seq/real_data_app")
+  setwd("~/yuqingz/ComBat_seq/real_data_app/")
+  #setwd("/restricted/projectnb/combat/work/yuqingz/ComBat-seq/real_data_app")
   script_dir <- ".."
   source(file.path(script_dir, "exprep_helpers.R"))
 }
@@ -21,9 +21,9 @@ load("TB_ExpRep.RData")
 ####  Parameters
 #command_args <- commandArgs(trailingOnly=TRUE)
 p_eval <- 1/3  # percentage of samples splitting into the evaluation set
-iterations <- 20
+iterations <- 4
 alpha_unadj <- 0.1 
-alpha_fdr_seq <- seq(from=0, to=0.2, by=0.005)[-1]
+alpha_fdr_seq <- seq(from=0, to=0.15, by=0.01)[-1]
   
 
 ####  Run pipeline
@@ -32,6 +32,7 @@ iter <- ii <- 1
 for(ii in seq_along(alpha_fdr_seq)){
   alpha_fdr <- alpha_fdr_seq[ii]  # FDR cutoff level for evaluation set
   tpr_mat_lst <- fpr_mat_lst <- tprADJ_mat_lst <- fdrADJ_mat_lst <- list()
+  print(alpha_fdr)
   
   for(iter in 1:iterations){
     print(paste("Iteration:", iter))
