@@ -10,7 +10,7 @@
 #' 
 #' @examples 
 #' 
-#' rm(list=ls()); load("simdata.RData"); full_mod=TRUE; normalize="none"; source("helper_seq.R")
+#' rm(list=ls()); load("simdata.RData"); full_mod=TRUE; covar_mod=NULL; source("helper_seq.R"); sourceCpp("mcint.cpp")
 #' 
 #' @export
 #' 
@@ -128,7 +128,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #,
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
   cat("Posterior estimates for parameters\n")
   monte_carlo_res <- lapply(1:n_batch, function(ii){
-    monte_carlo_int_NB(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
+    monte_carlo_int_NB(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]],
                        gamma=gamma_hat[, ii], phi=phi_hat[, ii])
     #dat=counts[, batches_ind[[ii]]]; mu=mu_hat[, batches_ind[[ii]]]; gamma=gamma_hat[, ii]; phi=phi_hat[, ii]
   })

@@ -10,14 +10,45 @@ monte_carlo_int_NB <- function(dat, mu, gamma, phi){
     ph <- phi[-i]		
     m <- mu[-i,!is.na(dat[i,])]
     x <- dat[i,!is.na(dat[i,])]
-    LH <- sapply(1:(nrow(dat)-1), function(j){prod(dnbinom(x, mu=m[j,], size=1/ph[j]))})
-    LH[is.nan(LH)]=0
-    c(gamma.star=sum(gamma[-i]*LH)/sum(LH), phi.star=sum(phi[-i]*LH)/sum(LH))
+    LH <- sapply(1:(nrow(dat)-1), function(j){mcintCpp(as.numeric(x), as.numeric(m[j,]), 1/ph[j], length(x))})
+    #LH <- sapply(1:(nrow(dat)-1), function(j){.Call("mcint", as.numeric(x), as.numeric(m[j,]), 1/ph[j], length(x))})  
+    #LH <- sapply(1:(nrow(dat)-1), function(j){prod(dnbinom(x, mu=m[j,], size=1/ph[j]))})
+    LH[is.nan(LH)]=0; #LH[is.infinite(LH)]=0;
+    if(sum(LH)==0 | is.na(sum(LH))){
+      c(gamma.star=0, phi.star=phi[i])
+    }else{
+      c(gamma.star=sum(gamma[-i]*LH)/sum(LH), phi.star=sum(phi[-i]*LH)/sum(LH))
+    }
+    #c(gamma.star=sum(gamma[-i]*LH)/sum(LH), phi.star=sum(phi[-i]*LH)/sum(LH))
   })
   pos_res <- do.call(rbind, pos_res)
   res <- list(gamma_star=pos_res[, "gamma.star"], phi_star=pos_res[, "phi.star"])	
   return(res)
 } 
+
+# cppFunction("double dnbiom(double x, double mu, double size){
+#   double prob = size / (size + mu);
+#   double dres = tgammaf(x + size)/(tgammaf(size) * tgammaf(x + 1.0)) * pow(prob, size) * pow(1.0-prob, x);
+#   return dres;
+# }")
+# 
+# cppFunction("double product(NumericVector arr, int n) { 
+#   double result = 1.0; 
+#   for (int i = 0; i < n; i++) {
+#     result = result * arr[i]; 
+#   }
+#   return result; 
+# }")
+# 
+# cppFunction("double mcintCpp(NumericVector x, NumericVector mu, double size, int n){
+#   double result_arr[n];
+#   double result;
+#   for (int i = 0; i < n; i++) {
+#     result_arr[i] = dnbiom(x[i], mu[i], size);
+#   }
+#   result = product(result_arr, n);
+#   return result;
+# }")
 
 
 # Match quantiles
