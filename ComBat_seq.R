@@ -10,12 +10,13 @@
 #' 
 #' @examples 
 #' 
-#' rm(list=ls()); load("simdata.RData"); full_mod=TRUE; covar_mod=NULL; source("helper_seq.R"); sourceCpp("mcint.cpp")
+#' rm(list=ls()); load("simdata.RData"); full_mod=TRUE; covar_mod=NULL; gene.subset.n=NULL; Cpp=FALSE; source("helper_seq.R"); sourceCpp("mcint.cpp")
 #' 
 #' @export
 #' 
 
-ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #, normalize="none"){
+ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE, gene.subset.n=NULL, 
+                       shrink=FALSE, shrink.disp=TRUE, Cpp=FALSE){  #, normalize="none"){
   ########  Preparation  ########  
   library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
   dge_obj <- DGEList(counts=counts)
@@ -74,7 +75,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #,
   disp_common <- sapply(1:n_batch, function(i){
     if(n_batches[i]==1){
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
-    }else if(n_batches[i] <= ncol(design)-ncol(batchmod)+1){ 
+    }else if((n_batches[i] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[i]], ])$rank < ncol(mod)){ 
       # not enough residual degree of freedom
       return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
       #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
@@ -87,7 +88,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #,
   genewise_disp_lst <- lapply(1:n_batch, function(j){
     if(n_batches[j]==1){
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
-    }else if(n_batches[j] <= ncol(design)-ncol(batchmod)+1){
+    }else if((n_batches[j] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[j]], ])$rank < ncol(mod)){
       # not enough residual degrees of freedom - use the common dispersion
       # return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=NULL, 
       #                               dispersion=disp_common[j], prior.df=0))
@@ -109,13 +110,12 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #,
     
   ########  Estimate parameters from NB GLM  ########
   cat("Fitting the GLM model\n")
-  glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=0) #no intercept - nonEstimable; compute offset (library sizes) within function
+  glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=1e-4) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
     vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
   # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
-  glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, 
-                           offset=new_offset, prior.count=0) 
+  glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, offset=new_offset, prior.count=1e-4) 
   
   #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
   gamma_hat <- glm_f2$coefficients[, 1:n_batch]
@@ -126,18 +126,45 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE){  #,
   
   
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
-  cat("Posterior estimates for parameters\n")
-  monte_carlo_res <- lapply(1:n_batch, function(ii){
-    monte_carlo_int_NB(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]],
-                       gamma=gamma_hat[, ii], phi=phi_hat[, ii])
-    #dat=counts[, batches_ind[[ii]]]; mu=mu_hat[, batches_ind[[ii]]]; gamma=gamma_hat[, ii]; phi=phi_hat[, ii]
-  })
-  names(monte_carlo_res) <- paste0('batch', levels(batch))
+  if(shrink){
+    cat("Apply EB - computing posterior estimates for parameters\n")
+    #cat("Posterior estimates for parameters\n")
+    if(Cpp){mcint_fun <- monte_carlo_int_NB_cpp}else{mcint_fun <- monte_carlo_int_NB}
+    monte_carlo_res <- lapply(1:n_batch, function(ii){
+      if(ii==1){
+        mcres <- mcint_fun(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
+                           gamma=gamma_hat[, ii], phi=phi_hat[, ii], gene.subset.n=gene.subset.n)
+      }else{
+        invisible(capture.output(mcres <- mcint_fun(dat=counts[, batches_ind[[ii]]], mu=mu_hat[, batches_ind[[ii]]], 
+                                                    gamma=gamma_hat[, ii], phi=phi_hat[, ii], gene.subset.n=gene.subset.n)))
+      }
+      return(mcres)
+      #ii=2;dat=counts[, batches_ind[[ii]]]; mu=mu_hat[, batches_ind[[ii]]]; gamma=gamma_hat[, ii]; phi=phi_hat[, ii]
+    })
+    names(monte_carlo_res) <- paste0('batch', levels(batch))
+    
+    gamma_star_mat <- lapply(monte_carlo_res, function(res){res$gamma_star})
+    gamma_star_mat <- do.call(cbind, gamma_star_mat)
+    phi_star_mat <- lapply(monte_carlo_res, function(res){res$phi_star})
+    phi_star_mat <- do.call(cbind, phi_star_mat)
+    
+    if(!shrink.disp){
+      cat("Apply EB shrinkage to mean only\n")
+      phi_star_mat <- phi_hat
+    }
+  }else{
+    cat("EB shrinkage off - using GLM estimates for parameters\n")
+    gamma_star_mat <- gamma_hat
+    phi_star_mat <- phi_hat
+  }
   
-  gamma_star_mat <- lapply(monte_carlo_res, function(res){res$gamma_star})
-  gamma_star_mat <- do.call(cbind, gamma_star_mat)
-  phi_star_mat <- lapply(monte_carlo_res, function(res){res$phi_star})
-  phi_star_mat <- do.call(cbind, phi_star_mat)
+  # if shrink.disp = FALSE, don't use posterior dispersion (don't shrink dispersion), use the gene-wise estimates instead
+  # if(!shrink){
+  #   gamma_star_mat <- gamma_hat
+  #   phi_star_mat <- phi_hat
+  # }else if(!shrink.disp){
+  #   phi_star_mat <- phi_hat
+  # }  
   
   
   ########  Obtain adjusted batch-free distribution  ########
