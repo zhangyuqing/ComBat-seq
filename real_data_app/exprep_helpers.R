@@ -35,16 +35,17 @@ DEpipe <- function(dat_lst, DE_method, alpha.unadj, alpha.fdr){
   # current ComBat 
   cat("## Current ComBat & lm\n")
   de_called3 <- currComBat_lm_DEpipe(cts=cts, batch=batch, group=group, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl)
-  # ComBat-seq 
+  #ComBat-seq
   cat("## ComBat-seq\n")
   covar_mod <- model.matrix(~factor(covar_incl))
-  adj_counts_combatseq <- ComBat_seq(counts=cts, batch=batch, group=group, covar_mod=covar_mod)
+  adj_counts_combatseq <- ComBat_seq(counts=cts, batch=batch, group=group, covar_mod=covar_mod, shrink=FALSE, shrink.disp=FALSE)
   de_called4 <- DE_method(cts=adj_counts_combatseq, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl)
   # RUVseq 
   cat("## RUV-seq\n")
-  emps <- tail(rownames(de_called1$de_res), n=10)
+  emps <- tail(rownames(de_called1$de_res), n=100)
   uvseq <- RUVg(cts, cIdx=emps, k=1)
-  de_called5 <- DE_method(cts, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl, covar=uvseq$W)  
+  #de_called5 <- DE_method(cts, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl, covar=uvseq$W)  
+  de_called5 <- DE_method(cts, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl)  
   # SVAseq 
   cat("## SVA-seq\n")
   if(length(unique(covar_incl))>1){

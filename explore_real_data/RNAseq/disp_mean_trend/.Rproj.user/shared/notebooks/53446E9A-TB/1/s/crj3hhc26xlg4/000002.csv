@@ -1,0 +1,26 @@
+"1","######  Batch differences in terms of mean gene counts  ######
+       top50 up top50 down 100 least changed
+Africa  1917.33    4100.75             96.39
+G6      6824.55    3466.82            142.55
+
+######  Range of fold change between batches  ######
+- All genes - FC:
+0.005 1291.191
+
+- All genes - log(FC):
+-5.352 7.163
+
+- Top genes - FC:
+          top50 up top50 down 100 least DE
+min FC       1.872      0.005        0.953
+median FC    4.424      0.425        1.000
+mean FC     52.612      0.410        0.996
+max FC    1291.191      0.609        1.000
+
+- Top genes - log(FC):
+             top50 up top50 down 100 least DE
+min logFC       0.627     -5.352       -0.049
+median logFC    1.487     -0.856        0.000
+mean logFC      3.963     -0.892       -0.004
+max logFC       7.163     -0.496        0.000
+"

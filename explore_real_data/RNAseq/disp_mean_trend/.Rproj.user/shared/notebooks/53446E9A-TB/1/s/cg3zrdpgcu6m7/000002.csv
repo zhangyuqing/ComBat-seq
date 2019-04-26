@@ -1,0 +1,19 @@
+"1","######  Changes in terms of average gene counts  ######
+               top50 up top50 down 100 least DE
+Non-progressor   1728.5     3362.2        757.1
+Progressor       3117.4     2773.3        706.5
+
+######  Range of fold change across biological conditions  ######
+          top50 up top50 down 100 least DE
+min FC       1.501      0.004        0.934
+median FC    3.975      0.705        1.000
+mean FC     21.299      0.563        0.998
+max FC     668.720      0.899        1.000
+
+######  Range of Log(fold change) across biological conditions  ######
+             top50 up top50 down 100 least DE
+min logFC       0.406     -5.553       -0.068
+median logFC    1.380     -0.350        0.000
+mean logFC      3.059     -0.574       -0.002
+max logFC       6.505     -0.107        0.000
+"

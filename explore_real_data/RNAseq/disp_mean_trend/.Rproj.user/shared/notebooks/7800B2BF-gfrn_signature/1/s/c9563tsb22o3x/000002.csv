@@ -1,0 +1,9 @@
+"0","```r
+## Remove genes with all 0 counts
+sigdata <- sigdata[apply(cts_mat, 1, function(x){!all(x==0)}), ]
+cts_mat <- assay(sigdata, \"counts\")
+rownames(cts_mat) <- paste0(\"gene\", 1:nrow(sigdata))
+print(dim(cts_mat))
+```"
+"1","[1] 20868    89
+"

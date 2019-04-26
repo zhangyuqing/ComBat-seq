@@ -93,7 +93,7 @@ ggplot(pca_obj_brazil_adj$data, aes(x=PC1, y=PC2, color=SequencingBatch, shape=S
 ## in G6
 seobj_G6_logtpm <- SummarizedExperiment(assays=list(logtpm=assays(seobj_G6)$logtpm), colData=colData(seobj_G6))
 pca_obj_G6 <- plotPCA(DESeqTransform(seobj_G6_logtpm), intgroup=c("SequencingBatch", "Label", "Sex")) 
-ggplot(pca_obj_G6$data, aes(x=PC1, y=PC2, color=Sex)) + 
+ggplot(pca_obj_G6$data, aes(x=PC1, y=PC2))+#, color=Sex)) + 
   geom_point() + 
   labs(x=sprintf("PC1: %s Variance", percent(pca_obj_G6$plot_env$percentVar[1])),
        y=sprintf("PC2: %s Variance", percent(pca_obj_G6$plot_env$percentVar[2])))

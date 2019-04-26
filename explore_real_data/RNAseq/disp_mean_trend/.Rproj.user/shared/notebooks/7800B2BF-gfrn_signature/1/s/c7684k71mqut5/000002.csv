@@ -1,0 +1,19 @@
+"1","######  Changes in terms of average gene counts  ######
+     top50 up top50 down 100 least DE
+GFP    1535.8     4700.0        325.2
+EGFR   2142.5     3570.9        321.2
+
+######  Range of fold change across biological conditions  ######
+          top50 up top50 down 100 least DE
+min FC       1.421      0.296        0.988
+median FC    1.652      0.648        1.000
+mean FC      1.809      0.616        0.999
+max FC       3.657      0.766        1.000
+
+######  Range of Log(fold change) across biological conditions  ######
+             top50 up top50 down 100 least DE
+min logFC       0.352     -1.219       -0.012
+median logFC    0.502     -0.434        0.000
+mean logFC      0.593     -0.484       -0.001
+max logFC       1.297     -0.266        0.000
+"

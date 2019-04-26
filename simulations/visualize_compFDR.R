@@ -1,17 +1,19 @@
 ########  FDR corrected P values  ########
 rm(list=ls())
-setwd("~/Google Drive/ComBat_seq/")
+#setwd("~/Google Drive/ComBat_seq/")
+setwd("~/Documents/ComBat_seq/")
 sapply(c("ggplot2", "gridExtra", "reshape2", "ggpubr"), require, character.only=TRUE)
-results_dir <- "./DE_compFDR"
+#results_dir <- "./DE_compFDR_rep"
+results_dir <- "./DE_libcomp_shrinkOff"
 source("~/Dropbox/Work/ComBat_Seq/ComBat-Seq/simulations/visualize_helpers.R")
 
 N_samples <- 20
 disp_level_vec <- 1:5
 confounding_level_vec <- seq(from=0.5, to=0.2, by=-0.1)
-coverage_level <- 1  #c(1, 5, 10)
+coverage_level <- 5  #c(1, 5, 10)
 alpha_fdr_sel <- 0.1
-sel_method_list <- list(edgeR=c("BaseIndi.edgeR", "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
-                        DESeq2=c("BaseIndi.DESeq2", "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
+sel_method_list <- list(edgeR=c("Base.edgeR", "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
+                        DESeq2=c("Base.DESeq2", "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
 
 #i=1;j=1
 fdr_lst_edgeR <- fdr_lst_DESeq2 <- sens_lst_edgeR <- sens_lst_DESeq2 <- list()  # out layer - confounding; inner layer - disp
@@ -19,10 +21,13 @@ for(i in seq_along(confounding_level_vec)){
   fdr_lst_edgeR[[i]] <- fdr_lst_DESeq2[[i]] <- sens_lst_edgeR[[i]] <- sens_lst_DESeq2[[i]] <- list()
   for(j in seq_along(disp_level_vec)){
     ## Read in result files
-    exp_name <- paste0("simCompFDR_N", N_samples, "_dispFC", disp_level_vec[j],
+    exp_name <- paste0("simLibcomp_N", N_samples, "_dispFC", disp_level_vec[j],
                        "_cnfnd", gsub(".","", confounding_level_vec[i], fixed=T), "_depth", coverage_level)
     sens_res <- read.csv(file.path(results_dir, sprintf('tprADJ_%s.csv', exp_name)))
     prec_res <- read.csv(file.path(results_dir, sprintf('precADJ_%s.csv', exp_name)))
+    
+    sens_res <- sens_res[sens_res$FDR.cutoff %in% seq(0.01, 0.15, 0.01), ]
+    prec_res <- prec_res[prec_res$FDR.cutoff %in% seq(0.01, 0.15, 0.01), ]
       
     # split DE algorithm used (edgeR & DESeq2)
     sens_res_edgeR <- sens_res[, c("FDR.cutoff", sel_method_list$edgeR)]
@@ -49,26 +54,26 @@ names(sens_lst_edgeR) <- names(sens_lst_DESeq2) <- paste0("Cnfnd", confounding_l
 
 
 ##  FDR observed VS nominal
-png("compFDR_edgeR_FDR.png", width=12, height=7, units="in", res=300)
+png("compFDR_edgeR_FDR_new.png", width=12, height=7, units="in", res=300)
 plt_fdr_edgeR <- ggplot(fdr_lst_edgeR, aes(x=FDR.cutoff, y=value, group=Method, color=Method)) +
   facet_grid(Cnfnd ~ Disp) +
   geom_line() +
   geom_abline(slope=1, intercept=0, color="black") +
   labs(x="evaluation set FDR cutoff", y="observed FDR", title="edgeR") +
-  scale_x_continuous(limits=c(0, 0.2)) +
+  scale_x_continuous(limits=c(0, 0.15)) +
   scale_y_continuous(limits=c(0, 0.3)) +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1)) 
 print(plt_fdr_edgeR) 
 dev.off()
 
-png("compFDR_DESeq2_FDR.png", width=12, height=7, units="in", res=300)
+png("compFDR_DESeq2_FDR_new.png", width=12, height=7, units="in", res=300)
 plt_fdr_DESeq2 <- ggplot(fdr_lst_DESeq2, aes(x=FDR.cutoff, y=value, group=Method, color=Method)) +
   facet_grid(Cnfnd ~ Disp) +
   geom_line() +
   geom_abline(slope=1, intercept=0, color="black") +
   labs(x="evaluation set FDR cutoff", y="observed FDR", title="DESeq2") +
-  scale_x_continuous(limits=c(0, 0.2)) +
+  scale_x_continuous(limits=c(0, 0.15)) +
   scale_y_continuous(limits=c(0, 0.3)) +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1)) 
@@ -80,7 +85,7 @@ dev.off()
 sens_lst_edgeR <- CleanSensOut(sens_lst_edgeR, ".edgeR")
 sens_lst_DESeq2 <- CleanSensOut(sens_lst_DESeq2, ".DESeq2")
 
-png("compFDR_edgeR_Sens.png", width=10, height=8, units="in", res=300)
+png("compFDR_edgeR_Sens_new.png", width=10, height=8, units="in", res=300)
 plt_sens_edgeR <- ggplot(sens_lst_edgeR, aes(x=Method, y=Sensitivity, color=Method)) +
   facet_grid(Cnfnd ~ Disp) +
   geom_boxplot() +
@@ -91,7 +96,7 @@ plt_sens_edgeR <- ggplot(sens_lst_edgeR, aes(x=Method, y=Sensitivity, color=Meth
 print(plt_sens_edgeR)
 dev.off()
 
-png("compFDR_DESeq2_Sens.png", width=10, height=8, units="in", res=300)
+png("compFDR_DESeq2_Sens_new.png", width=10, height=8, units="in", res=300)
 plt_sens_DESeq2 <- ggplot(sens_lst_DESeq2, aes(x=Method, y=Sensitivity, color=Method)) +
   facet_grid(Cnfnd ~ Disp) +
   geom_boxplot() +
@@ -106,17 +111,19 @@ dev.off()
 
 ########  Un-adjusted P values  ########
 rm(list=ls())
-setwd("~/Google Drive/ComBat_seq/")
+#setwd("~/Google Drive/ComBat_seq/")
+setwd("~/Documents/ComBat_seq/")
 sapply(c("ggplot2", "gridExtra", "reshape2", "ggpubr"), require, character.only=TRUE)
-results_dir <- "./DE_compFDR"
+#results_dir <- "./DE_compFDR_rep"
+results_dir <- "./DE_libcomp_shrinkOff"
 source("~/Dropbox/Work/ComBat_Seq/ComBat-Seq/simulations/visualize_helpers.R")
 
 N_samples <- 20
 disp_level_vec <- 1:5
 confounding_level_vec <- seq(from=0.5, to=0.2, by=-0.1)
-coverage_level <- 1  #c(1, 5, 10)
-sel_method_list <- list(edgeR=c("BaseIndi.edgeR", "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
-                        DESeq2=c("BaseIndi.DESeq2", "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
+coverage_level <- 5  #c(1, 5, 10)
+sel_method_list <- list(edgeR=c("Base.edgeR", "Batch.edgeR", "OneStep.edgeR", "ComBat.lm", "RUVseq.edgeR", "SVAseq.edgeR", "ComBatseq.edgeR"),
+                        DESeq2=c("Base.DESeq2", "Batch.DESeq2", "OneStep.DESeq2", "ComBat.lm", "RUVseq.DESeq2", "SVAseq.DESeq2", "ComBatseq.DESeq2"))
 
 #i=1;j=1
 fpr_lst_edgeR <- fpr_lst_DESeq2 <- tpr_lst_edgeR <- tpr_lst_DESeq2 <- list()  # out layer - confounding; inner layer - disp
@@ -124,7 +131,7 @@ for(i in seq_along(confounding_level_vec)){
   fpr_lst_edgeR[[i]] <- fpr_lst_DESeq2[[i]] <- tpr_lst_edgeR[[i]] <- tpr_lst_DESeq2[[i]] <- list()
   for(j in seq_along(disp_level_vec)){
     ## Read in result files
-    exp_name <- paste0("simCompFDR_N", N_samples, "_dispFC", disp_level_vec[j],
+    exp_name <- paste0("simLibcomp_N", N_samples, "_dispFC", disp_level_vec[j],
                        "_cnfnd", gsub(".","", confounding_level_vec[i], fixed=T), "_depth", coverage_level)
     tpr_res <- read.csv(file.path(results_dir, sprintf('tpr_%s.csv', exp_name)))
     fpr_res <- read.csv(file.path(results_dir, sprintf('fpr_%s.csv', exp_name)))
@@ -160,7 +167,7 @@ if(identical(fpr_DESeq2_merged[,-1], tpr_DESeq2_merged[,-1])){
 }else{stop("ERROR in merging data frames! - DESeq2")}
 #identical(perfstats_DESeq2[,-1], fpr_DESeq2_merged)
 
-png("compFDR_edgeR_scatter.png", width=10, height=7, units="in", res=300)
+png("compFDR_edgeR_scatter_new.png", width=10, height=7, units="in", res=300)
 p2_edgeR <- ggplot(perfstats_edgeR, aes(x=FPR, y=TPR, group=Method, color=Method, shape=Method)) +
   geom_point(size=3) +
   facet_grid(Cnfnd~Disp) +
@@ -172,7 +179,7 @@ p2_edgeR <- ggplot(perfstats_edgeR, aes(x=FPR, y=TPR, group=Method, color=Method
 print(p2_edgeR)
 dev.off()
 
-png("compFDR_DESeq2_scatter.png", width=10, height=7, units="in", res=300)
+png("compFDR_DESeq2_scatter_new.png", width=10, height=7, units="in", res=300)
 p2_DESeq2 <- ggplot(perfstats_DESeq2, aes(x=FPR, y=TPR, group=Method, color=Method, shape=Method)) +
   geom_point(size=3) +
   facet_grid(Cnfnd~Disp) +

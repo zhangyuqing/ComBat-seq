@@ -23,26 +23,63 @@ We first simulate the dataset with batch effect. Then, we apply ComBat-seq to th
 ```{r, echo=FALSE, results='hide'}
 rm(list=ls())
 sapply(c("ggplot2", "reshape2", "gridExtra", "dendextend", "edgeR", "DESeq2"), require, character.only=TRUE)
-source("../ComBat_seq.R"); source("../helper_seq.R")
+source("../ComBat_seq.R"); 
+source("../helper_seq.R")
+#sourceCpp("../mcint.cpp")
 source("sim_DEpipe_helpers.R")
 set.seed(123)
 
 ## Simulate count matrix and batch factor
+########  no dispersion effect, small mean batch effect
 y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y1_case <- matrix(rnbinom(50*5, mu=15, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
 y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
 
-y2_ctrl <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y2_case <- matrix(rnbinom(50*5, mu=30, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y2_null <- matrix(rnbinom(950*10, mu=20, size=100), ncol=10)
+y2_ctrl <- matrix(rnbinom(50*5, mu=13, size=20), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y2_case <- matrix(rnbinom(50*5, mu=26, size=20), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y2_null <- matrix(rnbinom(950*10, mu=13, size=20), ncol=10)
 
-y3_ctrl <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
-y3_case <- matrix(rnbinom(50*5, mu=30, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
-y3_null <- matrix(rnbinom(950*10, mu=20, size=20), ncol=10)
+y3_ctrl <- matrix(rnbinom(50*5, mu=13, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+y3_case <- matrix(rnbinom(50*5, mu=26, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+y3_null <- matrix(rnbinom(950*10, mu=13, size=20), ncol=10)
 
-y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
-y4_case <- matrix(rnbinom(50*5, mu=15, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
-y4_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
+y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+y4_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+y4_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+
+#######  no mean batch effect but large dispersion effect
+# y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+# y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+# y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+# 
+# y2_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+# y2_case <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+# y2_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
+# 
+# y3_ctrl <- matrix(rnbinom(50*5, mu=10, size=100), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+# y3_case <- matrix(rnbinom(50*5, mu=20, size=100), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+# y3_null <- matrix(rnbinom(950*10, mu=10, size=100), ncol=10)
+# 
+# y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+# y4_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+# y4_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+
+#######  both mean and dispersion
+# y1_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+# y1_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+# y1_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
+# 
+# y2_ctrl <- matrix(rnbinom(50*5, mu=15, size=40), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+# y2_case <- matrix(rnbinom(50*5, mu=30, size=40), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+# y2_null <- matrix(rnbinom(950*10, mu=15, size=40), ncol=10)
+# 
+# y3_ctrl <- matrix(rnbinom(50*5, mu=15, size=40), ncol=5); #mean(c(y1_ctrl)); var(c(y1_ctrl))
+# y3_case <- matrix(rnbinom(50*5, mu=30, size=40), ncol=5); #mean(c(y1_case)); var(c(y1_case))
+# y3_null <- matrix(rnbinom(950*10, mu=15, size=40), ncol=10)
+# 
+# y4_ctrl <- matrix(rnbinom(50*5, mu=10, size=20), ncol=5); #mean(c(y2_ctrl)); var(c(y2_ctrl))
+# y4_case <- matrix(rnbinom(50*5, mu=20, size=20), ncol=5); #mean(c(y2_case)); var(c(y2_case))
+# y4_null <- matrix(rnbinom(950*10, mu=10, size=20), ncol=10)
 
 counts <- rbind(cbind(y1_ctrl, y1_case, y2_ctrl, y2_case),
                 cbind(y1_null, y2_null),
@@ -63,7 +100,7 @@ de_ground_truth <- rownames(counts)[c(true_de_1, true_de_2)]
 
 ```{r, echo=FALSE}
 start_time <- Sys.time()
-adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)
+adj_counts <- ComBat_seq(counts=counts, batch=batch, group=group)#, gene.subset.n=100)  #, Cpp=TRUE)
 end_time <- Sys.time()
 cat("\nRunning time of ComBat-seq:\n")
 print(end_time - start_time)
@@ -94,25 +131,29 @@ colnames(counts_base) <- paste0("sample", 1:ncol(counts_base))
 
 ### edgeR
 
-```{r, echo=FALSE, results='hide'}
-de_called_base <- edgeR_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+```{r, eval=FALSE, echo=FALSE, results='hide'}
+de_called_base <- edgeR_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, 
+                               alpha.unadj=0.05, alpha.fdr=0.05)  
 base_perf_stats <- perfStats(called_vec=de_called_base$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 base_perf_stats_fdr <- perfStats(called_vec=de_called_base$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 
-de_called <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+de_called <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, 
+                          alpha.unadj=0.05, alpha.fdr=0.05)  
 perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 
-de_called_onestep <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+de_called_onestep <- edgeR_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, 
+                                  alpha.unadj=0.05, alpha.fdr=0.05)  
 onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
   
-de_called_adj <- edgeR_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+de_called_adj <- edgeR_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, 
+                              alpha.unadj=0.05, alpha.fdr=0.05)  
 adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 ```
 
-```{r, echo=FALSE}
+```{r, eval=FALSE, echo=FALSE}
 stats_df <- data.frame(Base=base_perf_stats[1:2], Unadj=perf_stats[1:2], 
                        OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
 stats_fdr_df <- data.frame(Base=base_perf_stats_fdr[c(1,3)], Unadj=perf_stats_fdr[c(1,3)], 
@@ -127,28 +168,32 @@ print(round(stats_fdr_df,2))
 
 ### DESeq2
 
-```{r, echo=FALSE, results='hide'}
+```{r, eval=FALSE, echo=FALSE, results='hide'}
 rm(de_called_base, de_called, de_called_adj, de_called_onestep, base_perf_stats, base_perf_stats_fdr,
    perf_stats, perf_stats_fdr, onestep_perf_stats, onestep_perf_stats_fdr, adj_perf_stats, adj_perf_stats_fdr)
 
-de_called_base <- DESeq2_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+de_called_base <- DESeq2_DEpipe(counts_mat=counts_base, batch=batch, group=group, include.batch=FALSE, 
+                                alpha.unadj=0.05, alpha.fdr=0.05)  
 base_perf_stats <- perfStats(called_vec=de_called_base$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 base_perf_stats_fdr <- perfStats(called_vec=de_called_base$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 
-de_called <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+de_called <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=FALSE, 
+                           alpha.unadj=0.05, alpha.fdr=0.05)  
 perf_stats <- perfStats(called_vec=de_called$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 perf_stats_fdr <- perfStats(called_vec=de_called$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 
-de_called_onestep <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, alpha=0.05)  
+de_called_onestep <- DESeq2_DEpipe(counts_mat=counts, batch=batch, group=group, include.batch=TRUE, 
+                                   alpha.unadj=0.05, alpha.fdr=0.05)  
 onestep_perf_stats <- perfStats(called_vec=de_called_onestep$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 onestep_perf_stats_fdr <- perfStats(called_vec=de_called_onestep$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
   
-de_called_adj <- DESeq2_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, alpha=0.05)  
+de_called_adj <- DESeq2_DEpipe(counts_mat=adj_counts, batch=batch, group=group, include.batch=FALSE, 
+                               alpha.unadj=0.05, alpha.fdr=0.05)  
 adj_perf_stats <- perfStats(called_vec=de_called_adj$unadj, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 adj_perf_stats_fdr <- perfStats(called_vec=de_called_adj$fdr, ground_truth_vec=de_ground_truth, N_genes=nrow(counts))
 ```
 
-```{r, echo=FALSE}
+```{r, eval=FALSE, echo=FALSE}
 stats_df <- data.frame(Base=base_perf_stats[1:2], Unadj=perf_stats[1:2], 
                        OneStep=onestep_perf_stats[1:2], CombatSeq=adj_perf_stats[1:2])
 stats_fdr_df <- data.frame(Base=base_perf_stats_fdr[c(1,3)], Unadj=perf_stats_fdr[c(1,3)], 
@@ -297,6 +342,29 @@ adj_dend <- color_branches(adj_dend, groupLabels=batch[order.dendrogram(adj_dend
 plot(adj_dend)  
 ```
 
+
+### PCA
+
+```{r, echo=FALSE}
+col_data <- data.frame(Batch=factor(batch), Group=factor(group)); rownames(col_data) <- colnames(counts)
+seobj <- SummarizedExperiment(assays=log2(counts+1), colData=col_data)
+pca_obj <- plotPCA(DESeqTransform(seobj), intgroup=c("Batch", "Group"))
+plt <- ggplot(pca_obj$data, aes(x=PC1, y=PC2, color=Batch, shape=Group)) + 
+  geom_point() + 
+  labs(x=sprintf("PC1: %s Variance", percent(pca_obj$plot_env$percentVar[1])),
+       y=sprintf("PC2: %s Variance", percent(pca_obj$plot_env$percentVar[2])),
+       title="Color by Batch - Unadjusted") +
+  theme(legend.position="bottom")
+seobj_adj <- SummarizedExperiment(assays=log2(adj_counts+1), colData=col_data)
+pca_obj_adj <- plotPCA(DESeqTransform(seobj_adj), intgroup=c("Batch", "Group"))
+plt_adj <- ggplot(pca_obj_adj$data, aes(x=PC1, y=PC2, color=Batch, shape=Group)) + 
+  geom_point() + 
+  labs(x=sprintf("PC1: %s Variance", percent(pca_obj_adj$plot_env$percentVar[1])),
+       y=sprintf("PC2: %s Variance", percent(pca_obj_adj$plot_env$percentVar[2])),
+       title="Color by Batch - ComBat-Seq") +
+  theme(legend.position="bottom")
+print(grid.arrange(plt, plt_adj, ncol=2))
+```
 
 
 ## Thoughts

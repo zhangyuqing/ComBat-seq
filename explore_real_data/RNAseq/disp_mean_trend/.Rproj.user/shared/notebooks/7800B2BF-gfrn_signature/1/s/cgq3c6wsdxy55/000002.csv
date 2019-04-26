@@ -1,0 +1,7 @@
+"1","####  Statistics about dispersion estimates from the batches  ####
+             Batch1 Batch2 Batch3
+min disp.    0.0001 0.0001 0.0001
+median disp. 0.0075 0.0059 0.0027
+mean disp.   0.0235 0.0309 0.0147
+max disp.    1.0377 2.8392 1.6146
+"

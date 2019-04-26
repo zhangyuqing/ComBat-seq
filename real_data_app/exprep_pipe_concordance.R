@@ -21,7 +21,7 @@ method_names <- c("raw.count", "one.step", "curr.combat", "ruvseq", "svaseq", "c
 ####  Parameters
 #command_args <- commandArgs(trailingOnly=TRUE)
 p_eval <- 1/3  # percentage of samples splitting into the evaluation set
-iterations <- 100
+iterations <- 300
 
 ####  Run pipeline
 iter <- 1
@@ -110,7 +110,7 @@ concord_collect <- concord_collect[!sapply(concord_collect, is.null)]
 concord_mlt_summary <- data.frame(rank=concord_collect[[1]]$rank, Evaluation=concord_collect[[1]]$Evaluation, Verification=concord_collect[[1]]$Verification)
 concord_mlt_summary$concordance <- rowMeans(do.call(cbind, lapply(concord_collect, function(cres){cres$concordance})))
 
-save(concord_mlt_summary, file="CATdata.RData")
+save(concord_mlt_summary, concord_collect, file="CATdata.RData")
 
 png("CATplot_TB.png", width=9, height=8, units="in", res=300)
 ggplot(concord_mlt_summary, aes(x=rank, y=concordance, group=Evaluation, color=Evaluation)) +

@@ -1,8 +1,13 @@
 rm(list=ls())
-wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
-script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
-# wdir <- "~/yuqingz/ComBat_seq/DE_analysis/"
-# script_dir <- ".."
+demo <- FALSE
+if(demo){
+  wdir <- "~/Documents/ComBat_seq/DE_analysis_tmp/"
+  script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
+}else{
+  # wdir <- "~/yuqingz/ComBat_seq/DE_analysis_shrinkOff/"
+  wdir <- "/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_analysis_powerdown_shrinkOff"
+  script_dir <- ".."
+}
 setwd(wdir)
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva"), require, character.only=TRUE)
 source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
@@ -11,7 +16,7 @@ set.seed(123)
 
 ####  Parameters
 command_args <- commandArgs(trailingOnly=TRUE)
-factor_exam <- command_args[1]  # "FC", "Disp", "Design", "Nsample", "BaseCts"  #the factor in examination in this sim
+factor_exam <- command_args[1]  # "FC", "Disp", "Design", "Nsample", "Depth"  #the factor in examination in this sim
 bio_fold <- as.numeric(command_args[2])  #2  #fold change for biological condition
 batch_fold <- as.numeric(command_args[3])  #3  #fold change for batch effect - assuming that batch behaves as fold change on counts
 size_1 <- as.numeric(command_args[4])   # 1/dispersion in batch 1 ("Bernard")
@@ -167,7 +172,8 @@ for(iter in 1:iterations){
   
   
   # On adjusted count - ComBat-seq + edgeR
-  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group)
+  adj_counts_combatseq <- ComBat_seq(counts=counts_matrix, batch=batch, group=group, 
+                                     shrink=FALSE, shrink.disp=FALSE)
   
   y5 <- DGEList(counts=adj_counts_combatseq)
   y5 <- calcNormFactors(y5, method="TMM")

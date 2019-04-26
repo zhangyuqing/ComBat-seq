@@ -1,0 +1,46 @@
+"1","######  Samples  #######
+- Total number of samples:
+[1] 89
+
+- Number of samples in condition groups:
+group_num
+ 0  1  2  3  4  5  6  7  8  9 
+27  6  6  6  5  6  9  9  9  6 
+In batch 1:
+  akt   bad gfp18  her2 igf1r   raf 
+    6     6    12     5     6     6 
+In batch 2:
+        egfr gfp_for_egfr 
+           6            6 
+In batch 3:
+ gfp30 krasgv krasqh kraswt 
+     9      9      9      9 
+
+- Number of samples in batches:
+batch
+ 1  2  3 
+41 12 36 
+
+
+######  Genes  #######
+- Total number of genes:
+[1] 23368
+
+- Number of genes with 0 counts:
+10097 43.2%
+
+- Number of genes with maximum 10 counts:
+7868 33.7%
+
+- Number of genes with ONLY 0s:
+2500 10.7%
+
+
+######  Counts  #######
+- Range of count in whole dataset:
+[1]       0 2270900
+
+- Average count in whole dataset:
+[1] \"Mean: 886.527\"
+[1] \"Median: 45\"
+"

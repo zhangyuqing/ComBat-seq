@@ -1,0 +1,8 @@
+"1","Design matrix not provided. Switch to the classic mode.
+####  Statistics about dispersion estimates from the two batches  ####
+               Africa       G6   India Brazil_1 Brazil_2
+min disp.      0.0054   0.0034  0.0001   0.0390   0.0305
+median disp.   0.1916   0.2422  0.1616   0.6837   0.2086
+mean disp.     3.3203   2.7797  0.3211   3.0653   0.4466
+max disp.    102.4000 102.4000 50.4797  38.5716   6.2874
+"

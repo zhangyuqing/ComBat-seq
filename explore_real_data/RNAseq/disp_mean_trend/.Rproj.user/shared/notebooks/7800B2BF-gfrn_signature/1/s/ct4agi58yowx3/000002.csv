@@ -1,0 +1,23 @@
+"0","```r
+####  Differential genes relative to biological condition 
+####  (within batch specified by 'test_batch')
+test_batch <- 2
+counts_batch <- cts_mat[, batch==test_batch]
+cond_batch <- group_num[batch==test_batch]
+y <- DGEList(counts=counts_batch, group=as.factor(cond_batch))
+y <- calcNormFactors(y, method=\"TMM\")
+design <- model.matrix(~as.factor(cond_batch))
+y <- estimateDisp(y, design)
+fit <- glmQLFit(y, design)
+qlf <- glmQLFTest(fit, coef=2)
+de_res <- topTags(qlf, n=nrow(sigdata))
+ 
+up_genes <- rownames(de_res)[which(de_res$table$logFC >= 0)]  # all up-regulated genes (descending order in terms of p value)
+head_up_genes <- head(up_genes, n=50)  # top-50 significant up-regulated genes
+tail_up_genes <- tail(up_genes, n=50)  # 50 least significant up-regulated genes
+cond_up_inds <- up_genes 
+down_genes <- rownames(de_res)[which(de_res$table$logFC < 0)]  # all down-regulated genes
+head_down_genes <- head(down_genes, n=50)  # top-50 significant down-regulated genes
+tail_down_genes <- tail(down_genes, n=50)  # 50 least significant down-regulated genes
+cond_down_inds <- down_genes
+```"

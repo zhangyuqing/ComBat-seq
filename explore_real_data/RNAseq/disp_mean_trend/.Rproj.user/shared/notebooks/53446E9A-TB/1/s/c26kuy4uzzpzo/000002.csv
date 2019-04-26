@@ -1,0 +1,11 @@
+"0","```r
+####  Differential genes relative to biological condition 
+####  (within batch 1 / batch specified by 'test_batch')
+test_batch <- \"G6\"
+counts_batch <- assay(rds_obj,\"counts\")[, batch==test_batch]
+cond_batch <- as.factor(as.character(group[batch==test_batch]))
+y <- DGEList(counts=counts_batch, group=as.factor(cond_batch))
+y <- calcNormFactors(y, method=\"TMM\")
+design <- model.matrix(~as.factor(cond_batch))
+y <- estimateDisp(y, design)
+```"

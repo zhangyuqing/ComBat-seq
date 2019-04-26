@@ -1,0 +1,7 @@
+"0","```r
+## Remove genes with all 0 counts
+rse_gene <- rse_gene[apply(assay(rse_gene, \"counts\"), 1, function(x){!all(x==0)}), ]
+print(dim(rse_gene))
+```"
+"1","[1] 46061    54
+"

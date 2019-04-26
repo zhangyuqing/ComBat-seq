@@ -1,0 +1,45 @@
+"1","######  Samples  #######
+- Total number of samples:
+[1] 691
+
+- Number of samples in condition groups:
+group
+Non-progressor     Progressor         Active 
+           448            188             55 
+
+- Number of samples in batches:
+batch
+  Africa Brazil_1 Brazil_2       G6    India 
+     197       39       12      399       44 
+
+In each batch separately:
+         Non-progressor Progressor Active
+Africa              104         77     16
+Brazil_1              9         16     14
+Brazil_2             12          0      0
+G6                  304         95      0
+India                19          0     25
+
+
+######  Genes  #######
+- Total number of genes:
+[1] 24391
+
+- Number of genes with 0 counts:
+14504 59.5%
+
+- Number of genes with maximum 10 counts:
+2587 10.6%
+
+- Number of genes with ONLY 0s:
+0 0%
+
+
+######  Counts  #######
+- Range of count in whole dataset:
+[1]       0 7674206
+
+- Average count in whole dataset:
+[1] \"Mean: 2350.9\"
+[1] \"Median: 75\"
+"
