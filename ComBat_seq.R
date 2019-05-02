@@ -179,6 +179,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
                                                           new_mu=new_mu, new_phi=new_phi)
   }
   
+  storage.mode(adjust_counts) <- "integer"
   dimnames(adjust_counts) <- dimnames(counts)
   return(adjust_counts)
 }
