@@ -55,7 +55,7 @@ group_sub <- factor(as.character(group_sub), levels=c("gfp_for_egfr", "gfp18", "
 group_sub <- plyr::revalue(group_sub, c("gfp_for_egfr"="gfp", "gfp18"="gfp", "gfp30"="gfp"))
 #counts=cts_sub;batch=batch_sub;group=group_sub_num;gene.subset.n=1000;Cpp=FALSE;covar_mod=NULL;full_mod=TRUE
 start_time <- Sys.time()
-combatseq_sub <- ComBat_seq(counts=cts_sub, batch=batch_sub, group=group_sub, gene.subset.n=1000, Cpp=FALSE,
+combatseq_sub <- ComBat_seq(counts=cts_sub, batch=batch_sub, group=group_sub, gene.subset.n=1000,
                             shrink=FALSE, shrink.disp=FALSE)
 # combatseq_sub <- ComBat_seq(counts=cts_sub, batch=batch_sub, group=group_sub, 
 #                             ctrl=list(full_mod=TRUE, shrink=TRUE, gene.subset.n=100))$adjust_counts
