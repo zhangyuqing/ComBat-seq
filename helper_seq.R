@@ -4,11 +4,9 @@ vec2mat <- function(vec, n_times){
 }
 
 
-
 ####  Monte Carlo integration functions
 monte_carlo_int_NB <- function(dat, mu, gamma, phi, gene.subset.n){
   pos_res <- lapply(1:nrow(dat), function(i){
-    ph <- phi[-i]		
     m <- mu[-i,!is.na(dat[i,])]
     x <- dat[i,!is.na(dat[i,])]
     gamma_sub <- gamma[-i]
@@ -18,21 +16,20 @@ monte_carlo_int_NB <- function(dat, mu, gamma, phi, gene.subset.n){
     if(!is.null(gene.subset.n) & is.numeric(gene.subset.n) & length(gene.subset.n)==1){
       if(i==1){cat(sprintf("Using %s random genes for Monte Carlo integration\n", gene.subset.n))}
       mcint_ind <- sample(1:(nrow(dat)-1), gene.subset.n, replace=FALSE)
-      m <- m[mcint_ind, ]; ph <- ph[mcint_ind]; gamma_sub <- gamma_sub[mcint_ind]; phi_sub <- phi_sub[mcint_ind]
+      m <- m[mcint_ind, ]; gamma_sub <- gamma_sub[mcint_ind]; phi_sub <- phi_sub[mcint_ind]
       G_sub <- gene.subset.n
     }else{
       if(i==1){cat("Using all genes for Monte Carlo integration; the function runs very slow for large number of genes\n")}
       G_sub <- nrow(dat)-1
     }
     
-    LH <- sapply(1:G_sub, function(j){prod(dnbinom(x, mu=m[j,], size=1/ph[j]))})
+    LH <- sapply(1:G_sub, function(j){prod(dnbinom(x, mu=m[j,], size=1/phi_sub[j]))})
     LH[is.nan(LH)]=0; 
     if(sum(LH)==0 | is.na(sum(LH))){
       return(c(gamma.star=as.numeric(gamma[i]), phi.star=as.numeric(phi[i])))
     }else{
       return(c(gamma.star=sum(gamma_sub*LH)/sum(LH), phi.star=sum(phi_sub*LH)/sum(LH)))
     }
-    #c(gamma.star=sum(gamma_sub*LH)/sum(LH), phi.star=sum(phi_sub*LH)/sum(LH))
   })
   pos_res <- do.call(rbind, pos_res)
   res <- list(gamma_star=pos_res[, "gamma.star"], phi_star=pos_res[, "phi.star"])	
@@ -40,6 +37,31 @@ monte_carlo_int_NB <- function(dat, mu, gamma, phi, gene.subset.n){
 } 
 
 
+####  Match quantiles
+match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
+  new_counts_sub <- matrix(NA, nrow=nrow(counts_sub), ncol=ncol(counts_sub))
+  for(a in 1:nrow(counts_sub)){
+    for(b in 1:ncol(counts_sub)){
+      if(counts_sub[a, b] <= 1){
+        new_counts_sub[a,b] <- counts_sub[a, b]
+      }else{
+        tmp_p <- pnbinom(counts_sub[a, b]-1, mu=old_mu[a, b], size=1/old_phi[a])
+        if(abs(tmp_p-1)<1e-4){
+          new_counts_sub[a,b] <- counts_sub[a, b]  
+          # for outlier count, if p==1, will return Inf values -> use original count instead
+        }else{
+          new_counts_sub[a,b] <- 1+qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+        }
+      }
+    }
+  }
+  return(new_counts_sub)
+}
+
+
+
+
+####  Experiments
 monte_carlo_int_NB_sep_wrapper <- function(dat, mu, gamma, phi, gene.subset.n){
   gamma_star <- rep(NA, length(gamma))
   phi_star <- rep(NA, length(phi))
@@ -62,15 +84,13 @@ monte_carlo_int_NB_sep_wrapper <- function(dat, mu, gamma, phi, gene.subset.n){
   return(list(gamma_star=gamma_star, phi_star=phi_star))
 } 
 
-
 monte_carlo_int_NB_logParams <- function(dat, mu, gamma, phi, gene.subset.n){
   gamma_log <- log(abs(gamma))
   gamma_negative <- which(gamma < 0)
-  phi_log <- log(abs(phi))
-  phi_negative <- which(phi < 0)
+  phi_log <- log(phi)
   
   pos_res <- lapply(1:nrow(dat), function(i){
-    ph <- phi[-i]		
+    #ph <- phi[-i]		
     m <- mu[-i,!is.na(dat[i,])]
     x <- dat[i,!is.na(dat[i,])]
     gamma_sub <- gamma[-i]
@@ -82,7 +102,7 @@ monte_carlo_int_NB_logParams <- function(dat, mu, gamma, phi, gene.subset.n){
     if(!is.null(gene.subset.n) & is.numeric(gene.subset.n) & length(gene.subset.n)==1){
       if(i==1){cat(sprintf("Using %s random genes for Monte Carlo integration\n", gene.subset.n))}
       mcint_ind <- sample(1:(nrow(dat)-1), gene.subset.n, replace=FALSE)
-      m <- m[mcint_ind, ]; ph <- ph[mcint_ind]; 
+      m <- m[mcint_ind, ]; #ph <- ph[mcint_ind]; 
       gamma_sub <- gamma_sub[mcint_ind]; phi_sub <- phi_sub[mcint_ind]
       gamma_sub_log <- gamma_sub_log[mcint_ind]; phi_sub_log <- phi_sub_log[mcint_ind]
       G_sub <- gene.subset.n
@@ -91,27 +111,23 @@ monte_carlo_int_NB_logParams <- function(dat, mu, gamma, phi, gene.subset.n){
       G_sub <- nrow(dat)-1
     }
     
-    LH <- sapply(1:G_sub, function(j){prod(dnbinom(x, mu=m[j,], size=1/ph[j]))})
+    LH <- sapply(1:G_sub, function(j){prod(dnbinom(x, mu=m[j,], size=1/phi_sub[j]))})
     LH[is.nan(LH)]=0; 
     if(sum(LH)==0 | is.na(sum(LH))){
       return(c(gamma.star=as.numeric(gamma[i]), phi.star=as.numeric(phi[i])))
     }else{
       return(c(gamma.star=exp(sum(gamma_sub_log*LH)/sum(LH)), phi.star=exp(sum(phi_sub_log*LH)/sum(LH))))
     }
-    #c(gamma.star=sum(gamma_sub*LH)/sum(LH), phi.star=sum(phi_sub*LH)/sum(LH))
   })
   pos_res <- do.call(rbind, pos_res)
   
   gamma_star <- pos_res[, "gamma.star"]
+  gamma_negative <- setdiff(gamma_negative, which(gamma_star == gamma))
   gamma_star[gamma_negative] <- - gamma_star[gamma_negative]
-  phi_star <- pos_res[, "phi.star"]
-  phi_star[phi_negative] <- - phi_star[phi_negative]
   
-  res <- list(gamma_star=gamma_star, phi_star=phi_star)	
+  res <- list(gamma_star=gamma_star, phi_star=pos_res[, "phi.star"])	
   return(res)
 } 
-
-
 
 # C++ version (deprecated)
 monte_carlo_int_NB_cpp <- function(dat, mu, gamma, phi, gene.subset.n){
@@ -146,8 +162,6 @@ monte_carlo_int_NB_cpp <- function(dat, mu, gamma, phi, gene.subset.n){
   res <- list(gamma_star=pos_res[, "gamma.star"], phi_star=pos_res[, "phi.star"])	
   return(res)
 } 
-
-
 
 #shrink only outliers
 #(use all genes)
@@ -213,7 +227,6 @@ monte_carlo_int_NB_cpp <- function(dat, mu, gamma, phi, gene.subset.n){
 #   return(res)
 # }
 
-
 #(shrink only outliers)
 monte_carlo_int_NB_outliers <- function(dat, mu, gamma, phi, gene.subset.n, outlier.genes){
   if(!is.null(outlier.genes) & length(outlier.genes$mean.genes)>0){
@@ -272,8 +285,6 @@ monte_carlo_int_NB_outliers <- function(dat, mu, gamma, phi, gene.subset.n, outl
   res <- list(gamma_star=gamma_star, phi_star=phi_star)  #, gamma_outliers=gamma_outliers, phi_outliers=phi_outliers)
   return(res)
 }
-
-
 
 #(shrink only outliers & use genes with low counts)
 # monte_carlo_int_NB_outliers <- function(dat, mu, gamma, phi, gene.subset.n, outlier.genes, eb.g.pl){
@@ -342,31 +353,6 @@ monte_carlo_int_NB_outliers <- function(dat, mu, gamma, phi, gene.subset.n, outl
 #   res <- list(gamma_star=gamma_star, phi_star=phi_star)  #, gamma_outliers=gamma_outliers, phi_outliers=phi_outliers)
 #   return(res)
 # }
-
-
-
-####  Match quantiles
-match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
-  new_counts_sub <- matrix(NA, nrow=nrow(counts_sub), ncol=ncol(counts_sub))
-  for(a in 1:nrow(counts_sub)){
-    for(b in 1:ncol(counts_sub)){
-      if(counts_sub[a, b] <= 1){
-        new_counts_sub[a,b] <- counts_sub[a, b]
-      }else{
-        tmp_p <- pnbinom(counts_sub[a, b]-1, mu=old_mu[a, b], size=1/old_phi[a])
-        if(abs(tmp_p-1)<1e-4){
-          new_counts_sub[a,b] <- counts_sub[a, b]  
-          # for outlier count, if p==1, will return Inf values -> use original count instead
-        }else{
-          new_counts_sub[a,b] <- 1+qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
-        }
-      }
-    }
-  }
-  return(new_counts_sub)
-}
-
-
 
 ####  Generate control variable
 # IQR of parameter distributions
@@ -529,8 +515,6 @@ ComBat_seq_control_IQR <- function(cts, batch, group=NULL, covar_mod=NULL, plt_d
               params=list(gamma=gamma_hat, phi=phi_hat)))
 }
 
-
-
 # expression based: low-high counts definition of outlier
 ComBat_seq_control_gene <- function(cts, batch, group=NULL){  #, cts_percent=0.95,){  
   full_mod <- FALSE
@@ -571,9 +555,6 @@ ComBat_seq_control_gene <- function(cts, batch, group=NULL){  #, cts_percent=0.9
   if(is.null(mean.genes.pooled)){outlier_genes_output <- NULL}
   return(list(full_mod=full_mod, shrink=shrink, gene.subset.n=gene.subset.n, outlier.genes=outlier_genes_output))
 }
-
-
-
 
 ####  Functions to address zeros
 # #cut_off=zero.fracs.cutoff
