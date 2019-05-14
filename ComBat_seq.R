@@ -22,11 +22,18 @@
 ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE, 
                        shrink=FALSE, shrink.disp=FALSE, gene.subset.n=NULL){  
   ########  Preparation  ########  
-  library(edgeR)  # require bioconductor 3.7, edgeR 3.22.1
-  dge_obj <- DGEList(counts=counts)
+  ## Remove genes with only 0 counts in any batch
+  batch <- as.factor(batch)
+  keep_lst <- lapply(levels(batch), function(b){
+    which(apply(counts[, batch==b], 1, function(x){!all(x==0)}))
+  })
+  keep <- Reduce(intersect, keep_lst)
+  counts <- counts[keep, ]
+  
+  # require bioconductor 3.7, edgeR 3.22.1
+  dge_obj <- edgeR::DGEList(counts=counts)
   
   ## Prepare characteristics on batches
-  batch <- as.factor(batch)
   n_batch <- nlevels(batch)  # number of batches
   batches_ind <- lapply(1:n_batch, function(i){which(batch==levels(batch)[i])}) # list of samples in each batch  
   n_batches <- sapply(batches_ind, length)
@@ -47,7 +54,12 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
     mod <- model.matrix(~1, data=as.data.frame(t(counts)))
   }
   # drop intercept in covariate model
-  if(!is.null(covar_mod)){covar_mod <- covar_mod[, !apply(covar_mod, 2, function(x){all(x==1)})]}
+  if(!is.null(covar_mod)){
+    if(class(covar_mod)=="data.frame"){
+      covar_mod <- do.call(cbind, lapply(1:ncol(covar_mod), function(i){model.matrix(~covar_mod[,i])}))
+    }
+    covar_mod <- covar_mod[, !apply(covar_mod, 2, function(x){all(x==1)})]
+  }
   # bind with biological condition of interest
   mod <- cbind(mod, covar_mod)
   # combine
@@ -68,6 +80,8 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
       }else{stop("At least one covariate is confounded with batch! Please remove confounded covariates and rerun ComBat")}}
   }
 
+  print(head(design))
+  
   ## Check for missing values in count matrix
   NAs = any(is.na(counts))
   if(NAs){cat(c('Found',sum(is.na(counts)),'Missing Data Values\n'),sep=' ')}
@@ -81,10 +95,10 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
       stop("ComBat-seq doesn't support 1 sample per batch yet!")
     }else if((n_batches[i] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[i]], ])$rank < ncol(mod)){ 
       # not enough residual degree of freedom
-      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
+      return(edgeR::estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
       #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
     }else{
-      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(counts)))
+      return(edgeR::estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(counts)))
     }
   })
   
@@ -96,7 +110,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
       # not enough residual degrees of freedom - use the common dispersion
       return(rep(disp_common[j], nrow(counts)))
     }else{
-      return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
+      return(edgeR::estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
                                     dispersion=disp_common[j], prior.df=0))
     }
   })
@@ -105,18 +119,18 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
   ## construct dispersion matrix
   phi_matrix <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
   for(k in 1:n_batch){
-    phi_matrix[, batches_ind[[k]]] <- vec2mat(genewise_disp_lst[[k]], n_batches[k]) #matrix(rep(genewise_disp_lst[[k]], n_batches[k]), ncol=n_batches[k])
+    phi_matrix[, batches_ind[[k]]] <- vec2mat(genewise_disp_lst[[k]], n_batches[k]) 
   }
   
     
   ########  Estimate parameters from NB GLM  ########
   cat("Fitting the GLM model\n")
-  glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=1e-4) #no intercept - nonEstimable; compute offset (library sizes) within function
+  glm_f <- edgeR::glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=1e-4) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
     vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
   # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
-  glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, offset=new_offset, prior.count=1e-4) 
+  glm_f2 <- edgeR::glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, offset=new_offset, prior.count=1e-4) 
   
   #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
   gamma_hat <- glm_f2$coefficients[, 1:n_batch]
