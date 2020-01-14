@@ -8,7 +8,7 @@ This approach better captures the properties of RNA-Seq count data compared to t
 
 This repository is **not a package** for ComBat-Seq. It stores files to reproduce the results in our manuscript.
 
-We are working to make ComBat-Seq easily and publically available. Currently it is included in an improved version of sva[2,3] [which I worked on](https://github.com/zhangyuqing/sva-devel). To use ComBat-Seq, download the sva package from my Github:
+We are working to make ComBat-Seq easily and publically available. Currently it is included in an improved version of sva[2,3] [which I work on](https://github.com/zhangyuqing/sva-devel). To use ComBat-Seq, download the sva package from my Github:
 
 ```r
 # install.packages("devtools")
@@ -45,7 +45,7 @@ adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=NULL, covar_mod=c
 ## Citation
 Please cite:
 
-> XXX (bioRxiv article should be out this week...stay tuned!)
+> Zhang, Y., Parmigiani, G., & Johnson, W. E. (2020). ComBat-Seq: batch effect adjustment for RNA-Seq count data. *bioRxiv*, 904730.
 
 
 ## File descriptions
@@ -61,9 +61,9 @@ Please cite:
 + **signature_data.rds**: RDS object for the processed signature dataset, which was published[4] and used in our previous work[5,6].
 
 ## References
-1. Johnson, W.E., Li, C. and Rabinovic, A., 2007. Adjusting batch effects in microarray expression data using empirical Bayes methods. *Biostatistics*, 8(1), pp.118-127.
-2. Leek, J.T., Johnson, W.E., Parker, H.S., Jaffe, A.E. and Storey, J.D., 2012. The sva package for removing batch effects and other unwanted variation in high-throughput experiments. *Bioinformatics*, 28(6), pp.882-883.
+1. Johnson, W. E., Li, C., & Rabinovic, A. (2007). Adjusting batch effects in microarray expression data using empirical Bayes methods. *Biostatistics*, 8(1), 118-127.
+2. Leek, J. T., Johnson, W. E., Parker, H. S., Jaffe, A. E., & Storey, J. D. (2012). The sva package for removing batch effects and other unwanted variation in high-throughput experiments. *Bioinformatics*, 28(6), 882-883.
 3. Leek JT, Johnson WE, Parker HS, Fertig EJ, Jaffe AE, Storey JD, Zhang Y, Torres LC (2019). *sva: Surrogate Variable Analysis*. R package version 3.34.0.
-4. Rahman, M., MacNeil, S.M., Jenkins, D.F., Shrestha, G., Wyatt, S.R., McQuerry, J.A., Piccolo, S.R., Heiser, L.M., Gray, J.W., Johnson, W.E. and Bild, A.H., 2017. Activity of distinct growth factor receptor network components in breast tumors uncovers two biologically relevant subtypes. *Genome medicine*, 9(1), p.40.
-5. McQuerry, J.A., Jenkins, D.F., Yost, S.E., Zhang, Y., Schmolze, D., Johnson, W.E., Yuan, Y. and Bild, A.H., 2019. Pathway activity profiling of growth factor receptor network and stemness pathways differentiates metaplastic breast cancer histological subtypes. *BMC cancer*, 19(1), p.881.
-6. Zhang, Y., Jenkins, D.F., Manimaran, S. and Johnson, W.E., 2018. Alternative empirical Bayes models for adjusting for batch effects in genomic studies. *BMC bioinformatics*, 19(1), p.262.
+4. Rahman, M., MacNeil, S. M., Jenkins, D. F., Shrestha, G., Wyatt, S. R., McQuerry, J. A., ... & Bild, A. H. (2017). Activity of distinct growth factor receptor network components in breast tumors uncovers two biologically relevant subtypes. *Genome medicine*, 9(1), 40.
+5. McQuerry, J. A., Jenkins, D. F., Yost, S. E., Zhang, Y., Schmolze, D., Johnson, W. E., ... & Bild, A. H. (2019). Pathway activity profiling of growth factor receptor network and stemness pathways differentiates metaplastic breast cancer histological subtypes. *BMC cancer*, 19(1), 881.
+6. Zhang, Y., Jenkins, D. F., Manimaran, S., & Johnson, W. E. (2018). Alternative empirical Bayes models for adjusting for batch effects in genomic studies. *BMC bioinformatics*, 19(1), 262.
