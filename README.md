@@ -52,13 +52,24 @@ Please cite:
 
 ### Simulation
 
-+ **sim_DEpipe.R, sim_DEpipe_helpers.R**: Pipeline and helper functions for simulations. Results (true and false positive rates) will be stored in CSV files. Modify the parameters to change the study design and level of batch effects.
-+ **visualize.R, visualize_helpers.R**: Script and helper functions to visualize the simulation results. Generate the plot based on the CSV result files.
++ **sim_DEpipe.R, sim_DEpipe_helpers.R**
+    + Pipeline and helper functions for simulations. Run sim_DEpipe.R to produce the simulation results. 
+    + Usage: ``Rscript sim_DEpipe.R <mean batch effect> <dispersion batch effect> <total number of samples>``
+    + True and false positive rates will be stored in CSV files. 
+    + Modify the parameters to change the study design, level of biological signal, sequencing depth, etc.
++ **qsub_simDEpipe.py**
+    + Script to run (qsub to cluster) multiple experiments
++ **visualize.R, visualize_helpers.R**
+    + Script and helper functions to visualize the simulation results. Run visualize.R to generate the plot based on the CSV result files. 
+    + Change the paths to files if necessary.
 
 ### Real data application
 
-+ **gfrn_application.R, gfrn_helpers.R**: Script and helper functions for application example on the GFRN signature dataset.
-+ **signature_data.rds**: RDS object for the processed signature dataset, which was published[4] and used in our previous work[5,6].
++ **gfrn_application.R, gfrn_helpers.R**
+    + Script and helper functions for application example on the GFRN signature dataset. Run gfrn_application.R for the example.
+    + Change the paths to files at the top of the script, if necessary.
++ **signature_data.rds**
+    + RDS object for the cleaned signature dataset, published[4] and used in our previous work[5,6].
 
 ## References
 1. Johnson, W. E., Li, C., & Rabinovic, A. (2007). Adjusting batch effects in microarray expression data using empirical Bayes methods. *Biostatistics*, 8(1), 118-127.

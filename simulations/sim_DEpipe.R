@@ -1,39 +1,45 @@
 rm(list=ls())
 demo <- FALSE  # if testing code, set as TRUE; if running simulations, set as FALSE
-if(demo){  # local
-  setwd("~/Documents/ComBat_seq/DE_analysis_tmp/")
-  script_dir <- "~/Dropbox/Work/ComBat_Seq/ComBat-Seq"
-  source(file.path(script_dir, "simulations/sim_DEpipe_helpers.R"))
-}else{  # running on server
-  #setwd("~/yuqingz/ComBat_seq/DE_compFDR/")
-  setwd("/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_libcomp_EBcomplete/")
+if(demo){  
+  # local
+  setwd("~/Desktop/")  # path to store the simulation CSV results
+  script_dir <- "./ComBat-Seq"  # path to combat-seq scripts
+  source(file.path(script_dir, "simulations/sim_DEpipe_helpers.R"))  # path to sim_DEpipe_helpers.R 
+}else{  
+  # running on server
+  setwd("/restricted/projectnb/combat/work/yuqingz/ComBat-seq/DE_large/")
   script_dir <- ".."
   source(file.path(script_dir, "sim_DEpipe_helpers.R"))
 }
 sapply(c("polyester", "Biostrings", "limma", "edgeR", "DESeq2", "sva", "RUVSeq", "MASS"), require, character.only=TRUE)
-source(file.path(script_dir, "ComBat_seq.R")); source(file.path(script_dir, "helper_seq.R"))
+source(file.path(script_dir, "ComBat_seq.R"))
+source(file.path(script_dir, "helper_seq.R"))
 set.seed(123)
 
 
 ####  Parameters
 command_args <- commandArgs(trailingOnly=TRUE)
-disp_fold_level <- as.numeric(command_args[1])  # dispersion of batch 2 is how many times that of batch 1, 1-5
-confounding_level <- as.numeric(command_args[2])  # level of confounding, 0-0.5
-N_total_sample <- as.numeric(command_args[3])  # 20 / 60
-coverage <- as.numeric(command_args[4])  # 1 / 5 / 10
-#disp_fold_level <- 3; confounding_level <- 0.4; N_total_sample <- 20; coverage <- 5; 
-factor_exam <- ifelse(demo, "LibcompDemo", "Libcomp")  #command_args[1]  
-bio_fold <- 2  #as.numeric(command_args[2])  
-batch_fold <- 1.5  #as.numeric(command_args[3])  
+
+batch_fold <- as.numeric(command_args[1]) # mean batch effect: mean of batch 2 is how many times that of batch 1
+disp_fold_level <- as.numeric(command_args[2])  # dispersion batch effect: dispersion of batch 2 is how many times that of batch 1, 1-5
+N_total_sample <- as.numeric(command_args[3])  # total number of samples in the whole count matrix (all batches pooled)
+
+coverage <- 5 #as.numeric(command_args[4])  # sequencing coverage
+bio_fold <- 1.5  #as.numeric(command_args[2])  # biological signal
 size_1 <- 1/0.15  #as.numeric(command_args[4])  # 1/dispersion in batch 1 
 size_2 <- 1/(0.15*disp_fold_level)  #as.numeric(command_args[5])   # 1/dispersion in batch 2 
-balanced <- FALSE  #as.logical(command_args[7]) 
-iterations <- 100 #number of simulations to run
-alpha_unadj <- 0.05
-alpha_fdr_seq <- seq(from=0, to=0.2, by=0.01)[-1]
-exp_name <- paste0("sim", factor_exam, "_N", N_total_sample, "_dispFC", disp_fold_level, 
+balanced <- FALSE  #as.logical(command_args[7]) # is the study design balanced?
+confounding_level <- 0.5  #as.numeric(command_args[3])  # level of confounding, 0-0.5
+sim_outliers <- FALSE #as.logical(command_args[1])  # simulate outlying count in the matrix?
+
+iterations <- 700  # number of simulations to run / 15
+alpha_unadj <- 0.05  # alpha significance level for differential expression (DE)
+alpha_fdr_seq <- seq(from=0, to=0.15, by=0.01)[-1]  # FDR cutoff for differential expression (DE)
+
+exp_name <- paste0("sim", ifelse(sim_outliers, "_simout", ""), 
+                   "_N", N_total_sample, "_meanFC", batch_fold, "_dispFC", disp_fold_level, 
                    "_cnfnd", confounding_level, "_depth", coverage)
-exp_name <- gsub('.', '', exp_name, fixed=TRUE)
+exp_name <- gsub('.', '', exp_name, fixed=TRUE)  # current experiment name
 
 # FASTA annotation & baseline read counts
 read_length <- 100
@@ -52,6 +58,7 @@ if(balanced & N_total_sample==10){
   N_samples <- N_total_sample*(c(confounding_level, 1-confounding_level, 1-confounding_level, confounding_level)/2) 
 }
 if(sum(N_samples)!=N_total_sample){stop("ERROR in Nsamples!")}
+
 #batch & biological vectors
 batch <- c(rep(1, sum(N_samples[1:2])), rep(2, sum(N_samples[3:4])))
 group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep(1, N_samples[4]))
@@ -60,9 +67,7 @@ group <- c(rep(0, N_samples[1]), rep(1, N_samples[2]), rep(0, N_samples[3]), rep
 
 ####  Run pipeline
 #iter=1; ii=1
-collect_DE <- collect_ground_truth <- collect_fold_change <- list()
 for(ii in seq_along(alpha_fdr_seq)){
-  #collect_DE_objs[[ii]] <- list()
   alpha_fdr <- alpha_fdr_seq[ii]
   
   for(iter in 1:iterations){
@@ -83,9 +88,8 @@ for(ii in seq_along(alpha_fdr_seq)){
     ## Fold change matrix and size matrix
     #for baseline datasets without batch effect
     fold_changes_base <- constructFCMatrix_Comp(G=length(fasta), FC_group=c(0,1,0,1), G_ups=G_ups, G_downs=G_downs, bioFC=bio_fold, batchFC=1)
-    #fold_changes_base <- fold_changes_base * sqrt(batch_fold)
     size_mat_base <- constructSizeMatrix(G=length(fasta), size_vec=c(size_1, size_1, size_1, size_1))
-    #size_mat_base <- constructSizeMatrix(G=length(fasta), size_vec=rep(1/mean(c(1/size_1, 1/size_2)), 4))
+    
     #for data with batch effect
     fold_changes <- constructFCMatrix_Comp(G=length(fasta), FC_group=c(0,1,0,1), G_ups=G_ups, G_downs=G_downs, bioFC=bio_fold, batchFC=batch_fold)
     size_mat <- constructSizeMatrix(G=length(fasta), size_vec=c(size_1, size_1, size_2, size_2))
@@ -126,14 +130,10 @@ for(ii in seq_along(alpha_fdr_seq)){
     # One-step - include batch as covariate
     de_called2 <- edgeR_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=TRUE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)  
     de_called2_deseq <- DESeq2_DEpipe(counts_mat=cts, batch=batch, group=group, include.batch=TRUE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)
-    # Current ComBat + linear model for DE
+    # Current ComBat + linear model for DE (on logCPM)
     de_called3 <- currComBat_lm_DEpipe(cts=cts, batch=batch, group=group, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)
-    # On adjusted count - ComBat-seq (with EB shrinkage)
-    adj_counts_combatseq_ebON <- ComBat_seq(counts=cts, batch=batch, group=group, shrink=TRUE, shrink.disp=TRUE)
-    de_called5_ebON <- edgeR_DEpipe(counts_mat=adj_counts_combatseq_ebON, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)  
-    de_called5_deseq_ebON <- DESeq2_DEpipe(counts_mat=adj_counts_combatseq_ebON, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)
     # On adjusted count - ComBat-seq (shrinkage OFF)
-    adj_counts_combatseq_ebOFF <- ComBat_seq(counts=cts, batch=batch, group=group, shrink=FALSE, shrink.disp=FALSE)
+    adj_counts_combatseq_ebOFF <- ComBat_seq(counts=cts, batch=batch, group=group, shrink=FALSE)
     de_called5_ebOFF <- edgeR_DEpipe(counts_mat=adj_counts_combatseq_ebOFF, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)  
     de_called5_deseq_ebOFF <- DESeq2_DEpipe(counts_mat=adj_counts_combatseq_ebOFF, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha_unadj, alpha.fdr=alpha_fdr)
     # Compare with RUVseq 
@@ -152,7 +152,6 @@ for(ii in seq_along(alpha_fdr_seq)){
                     Batch.edgeR=de_called1, Batch.DESeq2=de_called1_deseq,
                     OneStep.edgeR=de_called2, OneStep.DESeq2=de_called2_deseq,
                     ComBat.lm=de_called3, 
-                    ComBatseq.ebON.edgeR=de_called5_ebON, ComBatseq.ebON.DESeq2=de_called5_deseq_ebON,
                     ComBatseq.ebOFF.edgeR=de_called5_ebOFF, ComBatseq.ebOFF.DESeq2=de_called5_deseq_ebOFF,
                     RUVseq.edgeR=de_called6, RUVseq.DESeq2=de_called6_deseq,
                     SVAseq.edgeR=de_called7, SVAseq.DESeq2=de_called7_deseq)
@@ -174,24 +173,12 @@ for(ii in seq_along(alpha_fdr_seq)){
     write.table(DE_res["tpr", ], sprintf('tpr_%s.csv', exp_name),
                 append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # power (true positive rate)
     # for FDR adjusted values, write out TPR & Precision
-    write.table(DE_res_fdr["tpr", ], sprintf('tprADJ_%s.csv', exp_name),
-                append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # sensitivity (true positive rate)
-    write.table(DE_res_fdr["prec", ], sprintf('precADJ_%s.csv', exp_name),
-                append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # precision (1-FDR:false discovery rate)
+    # write.table(DE_res_fdr["tpr", ], sprintf('tprADJ_%s.csv', exp_name),
+    #             append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # sensitivity (true positive rate)
+    # write.table(DE_res_fdr["prec", ], sprintf('precADJ_%s.csv', exp_name),
+    #             append=!first.file, col.names=first.file, row.names=FALSE, sep=",") # precision (1-FDR:false discovery rate)
 
-    ## Cache DE results (randomly chosen) for sanity checks
-    # if(ii==3 & iter==17){
-    #   collect_DE_objs[[ii]][[iter]] <- DE_objs
-    # }
-    
-    # collect_DE[[iter]] <- DEtables
-    # collect_ground_truth[[iter]] <- de_ground_truth
-    # rownames(fold_changes) <- gene_names
-    # collect_fold_change[[iter]] <- fold_changes
-    
     rm(de_ground_truth, de_ground_truth_ind, true_downs, true_nulls, true_ups, G_downs, G_nulls, G_ups,
        fold_changes, size_mat, fold_changes_base, size_mat_base, DEtables, DE_objs)
   }
 }
-
-#save(collect_DE, collect_ground_truth, collect_fold_change, file=sprintf("DEout_%s.RData", exp_name))

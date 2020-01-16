@@ -22,8 +22,13 @@
 ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE, 
                        shrink=FALSE, shrink.disp=FALSE, gene.subset.n=NULL){  
   ########  Preparation  ########  
-  ## Remove genes with only 0 counts in any batch
+  ## Does not support 1 sample per batch yet
   batch <- as.factor(batch)
+  if(any(table(batch)<=1)){
+    stop("ComBat-seq doesn't support 1 sample per batch yet")
+  }
+  
+  ## Remove genes with only 0 counts in any batch
   keep_lst <- lapply(levels(batch), function(b){
     which(apply(counts[, batch==b], 1, function(x){!all(x==0)}))
   })
@@ -31,7 +36,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
   counts <- counts[keep, ]
   
   # require bioconductor 3.7, edgeR 3.22.1
-  dge_obj <- edgeR::DGEList(counts=counts)
+  dge_obj <- DGEList(counts=counts)
   
   ## Prepare characteristics on batches
   n_batch <- nlevels(batch)  # number of batches
@@ -55,7 +60,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
   }
   # drop intercept in covariate model
   if(!is.null(covar_mod)){
-    if(class(covar_mod)=="data.frame"){
+    if(is.data.frame(covar_mod)){
       covar_mod <- do.call(cbind, lapply(1:ncol(covar_mod), function(i){model.matrix(~covar_mod[,i])}))
     }
     covar_mod <- covar_mod[, !apply(covar_mod, 2, function(x){all(x==1)})]
@@ -74,43 +79,36 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
   ## Check if the design is confounded
   if(qr(design)$rank<ncol(design)){
     #if(ncol(design)<=(n_batch)){stop("Batch variables are redundant! Remove one or more of the batch variables so they are no longer confounded")}
-    if(ncol(design)==(n_batch+1)){stop("The covariate is confounded with batch! Remove the covariate and rerun ComBat")}
+    if(ncol(design)==(n_batch+1)){stop("The covariate is confounded with batch! Remove the covariate and rerun ComBat-Seq")}
     if(ncol(design)>(n_batch+1)){
       if((qr(design[,-c(1:n_batch)])$rank<ncol(design[,-c(1:n_batch)]))){stop('The covariates are confounded! Please remove one or more of the covariates so the design is not confounded')
-      }else{stop("At least one covariate is confounded with batch! Please remove confounded covariates and rerun ComBat")}}
+      }else{stop("At least one covariate is confounded with batch! Please remove confounded covariates and rerun ComBat-Seq")}}
   }
-
-  print(head(design))
   
   ## Check for missing values in count matrix
   NAs = any(is.na(counts))
   if(NAs){cat(c('Found',sum(is.na(counts)),'Missing Data Values\n'),sep=' ')}
-
+  
   
   ########  Estimate gene-wise dispersions within each batch  ########
   cat("Estimating dispersions\n")
   ## Estimate common dispersion within each batch as an initial value
   disp_common <- sapply(1:n_batch, function(i){
-    if(n_batches[i]==1){
-      stop("ComBat-seq doesn't support 1 sample per batch yet!")
-    }else if((n_batches[i] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[i]], ])$rank < ncol(mod)){ 
+    if((n_batches[i] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[i]], ])$rank < ncol(mod)){ 
       # not enough residual degree of freedom
-      return(edgeR::estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
-      #as.matrix(design[batches_ind[[i]], (n_batch+1):ncol(design)]),
+      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=NULL, subset=nrow(counts)))
     }else{
-      return(edgeR::estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(counts)))
+      return(estimateGLMCommonDisp(counts[, batches_ind[[i]]], design=mod[batches_ind[[i]], ], subset=nrow(counts)))
     }
   })
   
   ## Estimate gene-wise dispersion within each batch 
   genewise_disp_lst <- lapply(1:n_batch, function(j){
-    if(n_batches[j]==1){
-      stop("ComBat-seq doesn't support 1 sample per batch yet!")
-    }else if((n_batches[j] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[j]], ])$rank < ncol(mod)){
+    if((n_batches[j] <= ncol(design)-ncol(batchmod)+1) | qr(mod[batches_ind[[j]], ])$rank < ncol(mod)){
       # not enough residual degrees of freedom - use the common dispersion
       return(rep(disp_common[j], nrow(counts)))
     }else{
-      return(edgeR::estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
+      return(estimateGLMTagwiseDisp(counts[, batches_ind[[j]]], design=mod[batches_ind[[j]], ], 
                                     dispersion=disp_common[j], prior.df=0))
     }
   })
@@ -122,17 +120,15 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
     phi_matrix[, batches_ind[[k]]] <- vec2mat(genewise_disp_lst[[k]], n_batches[k]) 
   }
   
-    
+  
   ########  Estimate parameters from NB GLM  ########
   cat("Fitting the GLM model\n")
-  glm_f <- edgeR::glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=1e-4) #no intercept - nonEstimable; compute offset (library sizes) within function
+  glm_f <- glmFit(dge_obj, design=design, dispersion=phi_matrix, prior.count=1e-4) #no intercept - nonEstimable; compute offset (library sizes) within function
   alpha_g <- glm_f$coefficients[, 1:n_batch] %*% as.matrix(n_batches/n_sample) #compute intercept as batch-size-weighted average from batches
   new_offset <- t(vec2mat(getOffset(dge_obj), nrow(counts))) +   # original offset - sample (library) size
-    vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression
-  # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
-  glm_f2 <- edgeR::glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, offset=new_offset, prior.count=1e-4) 
+    vec2mat(alpha_g, ncol(counts))  # new offset - gene background expression # getOffset(dge_obj) is the same as log(dge_obj$samples$lib.size)
+  glm_f2 <- glmFit.default(dge_obj$counts, design=design, dispersion=phi_matrix, offset=new_offset, prior.count=1e-4) 
   
-  #beta_hat <- glm_f2$coefficients[, (n_batch+1):ncol(design)]
   gamma_hat <- glm_f2$coefficients[, 1:n_batch]
   mu_hat <- glm_f2$fitted.values
   phi_hat <- do.call(cbind, genewise_disp_lst)
@@ -140,8 +136,7 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
   
   ########  In each batch, compute posterior estimation through Monte-Carlo integration  ########  
   if(shrink){
-    cat("Apply EB - computing posterior estimates for parameters\n")
-    #if(Cpp){mcint_fun <- monte_carlo_int_NB_cpp}else{mcint_fun <- monte_carlo_int_NB}
+    cat("Apply shrinkage - computing posterior estimates for parameters\n")
     mcint_fun <- monte_carlo_int_NB
     monte_carlo_res <- lapply(1:n_batch, function(ii){
       if(ii==1){
@@ -161,11 +156,11 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
     phi_star_mat <- do.call(cbind, phi_star_mat)
     
     if(!shrink.disp){
-      cat("Apply EB shrinkage to mean only\n")
+      cat("Apply shrinkage to mean only\n")
       phi_star_mat <- phi_hat
     }
   }else{
-    cat("EB shrinkage off - using GLM estimates for parameters\n")
+    cat("Shrinkage off - using GLM estimates for parameters\n")
     gamma_star_mat <- gamma_hat
     phi_star_mat <- phi_hat
   }
@@ -193,7 +188,6 @@ ComBat_seq <- function(counts, batch, group, covar_mod=NULL, full_mod=TRUE,
                                                           new_mu=new_mu, new_phi=new_phi)
   }
   
-  storage.mode(adjust_counts) <- "integer"
   dimnames(adjust_counts) <- dimnames(counts)
   return(adjust_counts)
 }

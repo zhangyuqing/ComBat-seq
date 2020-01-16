@@ -24,7 +24,6 @@ constructFCSampleMatrix <- function(fc_batch, batch, group){
 
 
 ## library composition difference
-#G=length(fasta); FC_group=c(0,1,0,1); bioFC=bio_fold; batchFC=batch_fold
 constructFCMatrix_Comp <- function(G, FC_group, G_ups, G_downs, bioFC, batchFC){
   fold_changes <- matrix(NA, nrow=G, ncol=length(FC_group))
   
@@ -54,7 +53,6 @@ estimateMLEDisp <- function(x, group){
 
 
 ## simulate outliers
-#cts_mat <- cts; outgprob=0.1; outalpha=1e-08; fc_mat <- fold_changes; s_mat <- size_mat; rptx <- readspertx
 simOutliers <- function(cts_mat, fc_mat, s_mat, batch, group, rptx, outgprob, outalpha){
   genes_w_outliers <- which(sample(c(TRUE, FALSE), nrow(cts_mat), prob=c(outgprob, 1-outgprob), replace=TRUE))
   
@@ -75,13 +73,6 @@ simOutliers <- function(cts_mat, fc_mat, s_mat, batch, group, rptx, outgprob, ou
 }
 
 
-
-# disp_batch1 <- apply(cts_meanadj[,batch==1], 1, function(x){estimateMLEDisp(x, group=group[batch==1])})
-# disp_batch2 <- apply(cts_meanadj[,batch==2], 1, function(y){estimateMLEDisp(y, group=group[batch==2])})
-# median(disp_batch2) / median(disp_batch1)
-# mean(rowVars(cts[,batch==1])); mean(rowVars(cts[,batch==2]))
-# dispersion of batch 2 is still 3 times that of batch 1, wish they are the same, otherwise there still is variance batch effect
-# map dispersion of batch 2 to batch 1 without changing the mean
 quantDisp <- function(cts_meanadj, batch, group, DE_ind){
   counts_base_quant <- matrix(NA, nrow=nrow(cts_meanadj), ncol=ncol(cts_meanadj), dimnames=dimnames(cts_meanadj))
   counts_base_quant[, batch==1] <- cts_meanadj[, batch==1]
@@ -101,8 +92,6 @@ quantDisp <- function(cts_meanadj, batch, group, DE_ind){
   
   return(counts_base_quant)
 }
-#disp_batch1 <- apply(counts_base_quant[,batch==1], 1, function(x){estimateMLEDisp(x, group=group[batch==1])})
-#disp_batch2 <- apply(counts_base_quant[,batch==2], 1, function(x){estimateMLEDisp(x, group=group[batch==2])})
 
 
 matchDisp <- function(x, disp, target.disp){
@@ -116,7 +105,6 @@ matchDisp <- function(x, disp, target.disp){
 }
 
 
-#counts_mat=cts; include.batch=FALSE; alpha.unadj=alpha_unadj; alpha.fdr=alpha_fdr
 edgeR_DEpipe <- function(counts_mat, batch, group, include.batch, alpha.unadj, alpha.fdr, covar=NULL){
   cat("DE tool: edgeR\n")
   y <- DGEList(counts=counts_mat)

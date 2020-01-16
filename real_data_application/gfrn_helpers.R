@@ -14,8 +14,6 @@ DEpipe <- function(data_lst, batch, DE_method, group=NULL, alpha.unadj=1, alpha.
   # de_called3 <- currComBat_lm_DEpipe(cts=cts, batch=batch, group=group, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl)
   # ComBat-seq 
   cat("## ComBat-seq\n")
-  #covar_mod <- model.matrix(~factor(covar_incl))
-  #adj_counts_combatseq <- ComBat_seq(counts=cts, batch=batch, group=group, covar_mod=covar_mod)
   de_called4 <- DE_method(adj_counts_combatseq, batch=batch, group=group, include.batch=FALSE, alpha.unadj=alpha.unadj, alpha.fdr=alpha.fdr, covar_incl=covar_incl)
   # RUVseq 
   cat("## RUV-seq\n")
