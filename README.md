@@ -1,6 +1,6 @@
 ## About ComBat-Seq
 
-ComBat-Seq is a batch effect adjustment (BEA) tool for RNA-seq count data. It is an improved model based on the popular ComBat[1], to address its limitations through novel methods designed specifically for RNA-Seq studies. In ComBat-Seq, we use a negative binomial regression to model and address batch effects. Then it provides adjusted data by mapping the original data to an expected distribution if there were no batch effects. The adjusted data preserve the integer nature of count matrix. Like ComBat, it requires known a batch variable.
+ComBat-Seq is a batch effect adjustment (BEA) tool for RNA-seq count data. It is an improved model based on the popular ComBat[1], to address its limitations through novel methods designed specifically for RNA-Seq studies. ComBat-Seq takes **untransformed, raw count matrix** as input. We use a negative binomial regression to model and address batch effects. Then it provides adjusted data by mapping the original data to an expected distribution if there were no batch effects. The adjusted data preserve the integer nature of count matrix. Like ComBat, it requires known a batch variable.
 
 This approach better captures the properties of RNA-Seq count data compared to the Gaussian distribution assumed by ComBat. ComBat-Seq specifies different dispersion parameters across batches, allowing for flexible modeling of the variance of gene expression. In addition, ComBat-Seq provides adjusted data which preserves the integer nature of counts, so that the adjusted data are compatible with the assumptions of state-of-the-art differential expression software (e.g. edgeR, DESeq2, which specifically request untransformed count data). 
 
@@ -17,7 +17,7 @@ devtools::install_github("zhangyuqing/sva-devel")
 
 ## Usage
 
-Basic usage:
+Basic usage (users need to input at least two parameters - a raw count matrix from RNA-Seq studies, without any normalization or transformation, and a vector for batch separation):
 
 ```r
 count_matrix <- matrix(rnbinom(400, size=10, prob=0.1), nrow=50, ncol=8)
