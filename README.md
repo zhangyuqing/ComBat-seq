@@ -65,11 +65,13 @@ Please cite:
 
 ### Real data application
 
-+ **gfrn_application.R, gfrn_helpers.R**
-    + Script and helper functions for application example on the GFRN signature dataset. Run gfrn_application.R for the example.
++ **gfrn_application.R, gfrn_DE.R, gfrn_helpers.R**
+    + Script and helper functions for application example on the GFRN signature dataset. Run gfrn_application.R for the PCA analysis. Run gfrn_DE.R for differential expression analysis.
     + Change the paths to files at the top of the script, if necessary.
 + **signature_data.rds**
     + RDS object for the cleaned signature dataset, published[4] and used in our previous work[5,6].
++ **ras-pathway-gene-names.csv**
+    + genes in RAS signaling pathway, obtained from [NCI website](https://www.cancer.gov/research/key-initiatives/ras/ras-central/blog/2015/ras-pathway-v2).
 
 ## References
 1. Johnson, W. E., Li, C., & Rabinovic, A. (2007). Adjusting batch effects in microarray expression data using empirical Bayes methods. *Biostatistics*, 8(1), 118-127.
