@@ -62,17 +62,17 @@ Thanks for trying out ComBat-seq! Though I hope to answer as many of your questi
 
 I do not have that issue on my end, and was able to find the function following these steps: 1) remove the previous sva installed: `remove.packages("sva")`, 2) install with devtools (see Installation section), 3) check `packageVersion("sva")` to make sure it is version 3.35.2, and 4) make sure to call function by the right name `sva::ComBat_seq`. 
 
-If the problem persists, [others](https://github.com/zhangyuqing/ComBat-seq/issues/5) have cloned the repository, and sourced **both the ComBat_seq.R and helper_seq.R** scripts, which works for them. I do not have a better solution than that at the moment. 
+If the problem persists, [others](https://github.com/zhangyuqing/ComBat-seq/issues/5) have cloned the repository, and sourced **both the ComBat_seq.R and helper_seq.R** scripts, which works for them. I do not have a better solution at the moment. 
 
-Also, there is a auxiliary function named `vec2mat` contained in **helper_seq.R**, if you ran into any issue that R cannot find this function, helper_seq.R is where it is.
+Also, there is a auxiliary function named `vec2mat` contained in **helper_seq.R**. If you ran into any issue that R cannot find this function, helper_seq.R is where it is.
 
 > *The function returns a list rather than the adjusted matrix.*
 
-A: I have fixed this issue in the sva on my GitHub, by converting input data into a matrix. If you are using the Bioconductor version (which we hope will be updated soon), please convert the input data (`as.matrix(count_matrix)`), and make sure the count matrix has **R matrix data type**.
+I have fixed this issue in the sva on my GitHub, by converting input data into a matrix. If you are using the Bioconductor version (which we hope will be updated soon), please convert the input data (`as.matrix(count_matrix)`), and make sure the count matrix has **R matrix data type**.
 
-> *Q: Can I use ComBat-seq to set a reference batch / adjust multiple variables / on (or to create) TPM, FPKM, other normalized data / in other creative ways?*
+> *Can I use ComBat-seq to set a reference batch / adjust multiple variables / on (or to create) TPM, FPKM, other normalized data / in other creative ways?*
 
-A: My first version of ComBat-seq is pretty simple. It does not allow reference batch options, and only considers 1 batch variable. There are certainly many ways to work with ComBat-seq to deal with flexible settings, so please feel free to be creative :) 
+My first version of ComBat-seq is pretty simple. It does not allow reference batch options, and only considers 1 batch variable. There are certainly many ways to work with ComBat-seq to deal with flexible settings, so please feel free to be creative :) 
 
 
 
